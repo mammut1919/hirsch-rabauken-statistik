@@ -13,8 +13,8 @@ Die Anwendung soll später über GitHub Pages bereitgestellt werden.
 - Vite
 - Vue Router
 - Pinia
-- PrimeVue 4
-- PrimeUIX Aura Theme (Dark)
+- PrimeVue 4 (MIT)
+- PrimeUIX Themes 2.x: Aura-Preset (`@primeuix/themes`), Dark Mode über `.app-dark`
 - PrimeIcons
 - Vitest
 - ESLint und Prettier
@@ -50,7 +50,7 @@ Die Anwendung soll später über GitHub Pages bereitgestellt werden.
 ## Design
 - Desktop-first, responsive Browser-Anwendung.
 - Dunkles Erscheinungsbild.
-- PrimeVue Aura Dark als Theme.
+- PrimeVue 4 mit dem Aura-Preset aus `@primeuix/themes`; Dark Mode über `.app-dark`.
 - Türkis als Akzentfarbe.
 - Grün für Siege, Rot für Niederlagen.
 - Einheitliche Navigation und Gestaltung.

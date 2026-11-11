@@ -1,11 +1,41 @@
-import { describe, it, expect } from 'vitest'
+import { afterEach, describe, it, expect, vi } from 'vitest'
 
 import { mount } from '@vue/test-utils'
+import { createPinia } from 'pinia'
+import PrimeVue from 'primevue/config'
+import Aura from '@primeuix/themes/aura'
 import App from '../App.vue'
 
 describe('App', () => {
-  it('mounts renders properly', () => {
-    const wrapper = mount(App)
-    expect(wrapper.text()).toContain('You did it!')
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('renders the application shell and main navigation', () => {
+    vi.stubGlobal('matchMedia', () => ({
+      matches: false,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }))
+
+    const wrapper = mount(App, {
+      global: {
+        plugins: [
+          createPinia(),
+          [PrimeVue, { theme: { preset: Aura, options: { darkModeSelector: '.app-dark' } } }],
+        ],
+        stubs: { RouterLink: { template: '<a><slot /></a>' }, RouterView: true },
+      },
+    })
+
+    expect(wrapper.text()).toContain('Hirsch-Rabauken Statistik')
+    expect(wrapper.text()).toContain('Dashboard')
+    expect(wrapper.text()).toContain('Mannschaftsspiele')
+    expect(wrapper.text()).toContain('Spieler')
+    expect(wrapper.text()).toContain('Doppel')
+    expect(wrapper.text()).toContain('Einstellungen')
+    expect(wrapper.text()).toContain('Saison')
   })
 })
