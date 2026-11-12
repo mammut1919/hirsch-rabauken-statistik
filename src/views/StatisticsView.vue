@@ -1,0 +1,313 @@
+<script setup lang="ts">
+import { computed, ref, watch } from 'vue'
+import { storeToRefs } from 'pinia'
+import Card from 'primevue/card'
+import Message from 'primevue/message'
+import Tag from 'primevue/tag'
+import ToggleSwitch from 'primevue/toggleswitch'
+import { getAvailableSeasons } from '../services/seasonConfig'
+import {
+  calculatePlayerStatistics,
+  type PlayerGameSummary,
+  type PlayerStatisticsRow,
+} from '../services/playerStatistics'
+import { useMatchReportsStore } from '../stores/matchReports'
+import { usePlayerRosterStore } from '../stores/playerRoster'
+import { useSeasonStore } from '../stores/season'
+
+const matchReportsStore = useMatchReportsStore()
+const rosterStore = usePlayerRosterStore()
+const seasonStore = useSeasonStore()
+const { reports, loadedReportCount } = storeToRefs(matchReportsStore)
+const { rosters, loading: rosterLoading, errors: rosterErrors } = storeToRefs(rosterStore)
+const { selectedSeason, selectedSeasonLabel } = storeToRefs(seasonStore)
+const showLegs = ref(false)
+const availableSeasons = getAvailableSeasons()
+
+const selectedSeasonConfigs = computed(() => {
+  if (selectedSeason.value === 'all') return availableSeasons
+  return availableSeasons.filter(({ key }) => key === selectedSeason.value)
+})
+
+watch(
+  selectedSeason,
+  () => {
+    void rosterStore.loadRosters(selectedSeasonConfigs.value)
+  },
+  { immediate: true },
+)
+
+const visibleRosters = computed(() =>
+  Object.fromEntries(
+    selectedSeasonConfigs.value
+      .filter(({ key }) => rosters.value[key])
+      .map(({ key }) => [key, rosters.value[key]!]),
+  ),
+)
+
+const reportSets = computed(() => {
+  const includesH1 = selectedSeason.value === 'all' || selectedSeason.value === '2026-1'
+  if (!includesH1 || loadedReportCount.value === 0) return []
+  return [
+    {
+      seasonKey: '2026-1',
+      reports: Object.values(reports.value).flatMap((report) =>
+        Array.isArray(report) ? report : [],
+      ),
+    },
+  ]
+})
+
+const statistics = computed(() => calculatePlayerStatistics(visibleRosters.value, reportSets.value))
+const hasH1Reports = computed(() => reportSets.value.length > 0)
+const hasRosterForReports = computed(() =>
+  reportSets.value.every(({ seasonKey }) => Boolean(visibleRosters.value[seasonKey])),
+)
+const relevantRostersLoading = computed(() =>
+  selectedSeasonConfigs.value.some(({ key }) => rosterLoading.value[key]),
+)
+const relevantRosterErrors = computed(() =>
+  selectedSeasonConfigs.value
+    .map(({ key, label }) => (rosterErrors.value[key] ? `${label}: ${rosterErrors.value[key]}` : null))
+    .filter((error): error is string => error !== null),
+)
+const hasOnlyH1Reports = computed(
+  () => selectedSeason.value === 'all' && hasH1Reports.value,
+)
+
+function percentage(summary: PlayerGameSummary): string {
+  return summary.winPercentage === null
+    ? '–'
+    : `${summary.winPercentage.toLocaleString('de-DE', { maximumFractionDigits: 1 })} %`
+}
+
+function legValue(value: number): string {
+  return value.toLocaleString('de-DE')
+}
+
+function legDifference(value: number): string {
+  return value > 0 ? `+${value}` : String(value)
+}
+
+function kindLabel(reason: string): string {
+  if (reason === 'mehrdeutig') return 'mehrdeutiger Kadername'
+  if (reason === 'doppelformat') return 'DP ohne genau zwei Namen je Seite'
+  return 'nicht im ausgewählten Kader (ignoriert)'
+}
+
+function playerKey(player: PlayerStatisticsRow): string {
+  return player.playerId
+}
+</script>
+
+<template>
+  <div class="view-heading statistics-heading">
+    <div>
+      <p class="eyebrow">HIRSCH-RABAUKEN · {{ selectedSeasonLabel }}</p>
+      <h2>Spielerstatistik</h2>
+    </div>
+    <Tag
+      :value="`${loadedReportCount} Matchreports im Cache`"
+      :severity="hasH1Reports ? 'success' : 'secondary'"
+    />
+  </div>
+
+  <Message v-if="relevantRosterErrors.length" severity="error" :closable="false" class="cache-message">
+    <ul class="message-list">
+      <li v-for="error in relevantRosterErrors" :key="error">{{ error }}</li>
+    </ul>
+  </Message>
+
+  <Message v-if="hasOnlyH1Reports" severity="warn" :closable="false" class="cache-message">
+    Gesamt umfasst aktuell die geladenen H1-2026-Matchreports. Für H2-2026 liegen in diesem
+    Arbeitsspeicher-Store noch keine Matchreports vor.
+  </Message>
+
+  <Message v-else-if="selectedSeason === '2026-2'" severity="info" :closable="false" class="cache-message">
+    Für H2 2026 ist der offizielle Mannschaftskader verfügbar, aber der bestehende Matchreport-Store
+    enthält derzeit nur H1-2026-Reports. Deshalb werden für H2 keine Spielzahlen als null oder
+    ungespielt ausgegeben.
+  </Message>
+
+  <Message v-else-if="!hasH1Reports" severity="info" :closable="false" class="cache-message">
+    <div>
+      <strong>Keine passenden Matchreports im Arbeitsspeicher.</strong>
+      <p>
+        Öffne den <RouterLink to="/matchreport-test">Datenlade-Test</RouterLink>, um H1-2026-Reports
+        zu laden. Die Reports bleiben nur bis zum Neuladen oder Schließen der Anwendung im Pinia-Cache.
+      </p>
+    </div>
+  </Message>
+
+  <div v-if="relevantRostersLoading" class="loading-note" role="status">
+    <i class="pi pi-spin pi-spinner" aria-hidden="true" />
+    <span>Offizielle Teilnehmerlisten werden geladen.</span>
+  </div>
+
+  <section class="statistics-section player-statistics" aria-labelledby="player-heading">
+    <div class="section-heading">
+      <div>
+        <p class="eyebrow">KADER · EZ UND DP</p>
+        <h3 id="player-heading">Einzel- und Doppelstatistik</h3>
+      </div>
+      <div class="legs-control">
+        <label for="show-legs">Legs anzeigen</label>
+        <ToggleSwitch id="show-legs" v-model="showLegs" aria-label="Leg-Informationen anzeigen" />
+      </div>
+    </div>
+
+    <template v-if="hasH1Reports && hasRosterForReports && !relevantRostersLoading">
+      <div class="stats-grid">
+        <section class="stats-kind" aria-labelledby="singles-heading">
+          <div class="kind-heading">
+            <h4 id="singles-heading">Einzel (EZ)</h4>
+            <Tag value="Einzel" severity="info" />
+          </div>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Spieler</th>
+                  <th scope="col">Gespielt</th>
+                  <th scope="col">Gewonnen</th>
+                  <th scope="col">Gewinnquote</th>
+                  <template v-if="showLegs">
+                    <th scope="col">Legs +</th>
+                    <th scope="col">Legs −</th>
+                    <th scope="col">Differenz</th>
+                  </template>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="player in statistics.players" :key="playerKey(player)">
+                  <th scope="row">{{ player.displayName }}</th>
+                  <td>{{ player.singles.played }}</td>
+                  <td>{{ player.singles.won }}</td>
+                  <td>{{ percentage(player.singles) }}</td>
+                  <template v-if="showLegs">
+                    <td>{{ legValue(player.singles.legsWon) }}</td>
+                    <td>{{ legValue(player.singles.legsLost) }}</td>
+                    <td>{{ legDifference(player.singles.legDifference) }}</td>
+                  </template>
+                </tr>
+                <tr v-if="statistics.players.length === 0">
+                  <td :colspan="showLegs ? 7 : 4" class="empty-cell">Kein Kader geladen.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="stats-kind" aria-labelledby="doubles-heading">
+          <div class="kind-heading">
+            <h4 id="doubles-heading">Doppel (DP)</h4>
+            <Tag value="Doppel" severity="success" />
+          </div>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Spieler</th>
+                  <th scope="col">Gespielt</th>
+                  <th scope="col">Gewonnen</th>
+                  <th scope="col">Gewinnquote</th>
+                  <template v-if="showLegs">
+                    <th scope="col">Legs +</th>
+                    <th scope="col">Legs −</th>
+                    <th scope="col">Differenz</th>
+                  </template>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="player in statistics.players" :key="playerKey(player)">
+                  <th scope="row">{{ player.displayName }}</th>
+                  <td>{{ player.doubles.played }}</td>
+                  <td>{{ player.doubles.won }}</td>
+                  <td>{{ percentage(player.doubles) }}</td>
+                  <template v-if="showLegs">
+                    <td>{{ legValue(player.doubles.legsWon) }}</td>
+                    <td>{{ legValue(player.doubles.legsLost) }}</td>
+                    <td>{{ legDifference(player.doubles.legDifference) }}</td>
+                  </template>
+                </tr>
+                <tr v-if="statistics.players.length === 0">
+                  <td :colspan="showLegs ? 7 : 4" class="empty-cell">Kein Kader geladen.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <details v-if="statistics.unmatchedNames.length" class="unmatched-details">
+        <summary>Nicht zugeordnete Namen und Datenfälle ({{ statistics.unmatchedNames.length }})</summary>
+        <ul>
+          <li v-for="item in statistics.unmatchedNames" :key="`${item.seasonKey}-${item.displayName}-${item.reason}`">
+            {{ item.displayName }} · {{ kindLabel(item.reason) }} · {{ item.count }}×
+          </li>
+        </ul>
+      </details>
+    </template>
+  </section>
+
+  <section class="statistics-section team-section" aria-labelledby="team-heading">
+    <div class="section-heading">
+      <div>
+        <p class="eyebrow">MANNSCHAFT</p>
+        <h3 id="team-heading">Spielübersicht</h3>
+      </div>
+      <Tag value="Nicht aus Matchreports abgeleitet" severity="secondary" />
+    </div>
+    <p class="section-note">
+      Mannschaftsergebnisse werden weiterhin nicht aus Einzel- oder Doppel-Legs geschätzt. Der
+      Mannschaftsspielplan ist nicht Teil dieser Spielerstatistik.
+    </p>
+  </section>
+
+  <div class="detail-grid">
+    <section class="statistics-section detail-section" aria-labelledby="records-heading">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">LEISTUNGEN</p>
+          <h3 id="records-heading">Bestleistungen</h3>
+        </div>
+        <Tag value="Nicht ausgewiesen" severity="secondary" />
+      </div>
+      <p class="section-note">180er und weitere Bestleistungen werden nicht berechnet.</p>
+    </section>
+  </div>
+</template>
+
+<style scoped>
+.statistics-heading { align-items: flex-start; }
+.statistics-heading h2 { margin: 0; color: #eaf1f5; font-size: 22px; font-weight: 600; }
+.cache-message { margin-bottom: 22px; }
+.cache-message p { margin: 6px 0 0; }
+.cache-message a { color: #54e0d2; }
+.message-list { margin: 0; padding-left: 18px; }
+.loading-note { display: flex; align-items: center; gap: 10px; margin: 0 0 20px; color: #95a3af; font-size: 13px; }
+.statistics-section { padding: 22px; border: 1px solid #273640; border-radius: 14px; background: #0e161f; }
+.section-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 18px; }
+.section-heading .eyebrow { margin-bottom: 6px; }
+.section-heading h3 { margin: 0; color: #eaf1f5; font-size: 17px; font-weight: 600; }
+.legs-control { display: flex; align-items: center; gap: 10px; color: #c8d5dc; font-size: 13px; }
+.stats-grid { display: grid; grid-template-columns: 1fr; gap: 18px; }
+.stats-kind { min-width: 0; padding: 16px; border: 1px solid #273640; border-radius: 11px; background: #111b25; }
+.kind-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.kind-heading h4 { margin: 0; color: #eaf1f5; font-size: 15px; }
+.table-scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; color: #c8d5dc; font-size: 12px; text-align: left; }
+th, td { padding: 10px 9px; border-bottom: 1px solid #273640; white-space: nowrap; }
+thead th { color: #82919e; font-size: 11px; font-weight: 600; }
+tbody th { color: #eaf1f5; font-weight: 500; }
+tbody tr:last-child th, tbody tr:last-child td { border-bottom: 0; }
+.empty-cell { color: #82919e; text-align: center; }
+.unmatched-details { margin-top: 17px; color: #95a3af; font-size: 12px; }
+.unmatched-details summary { cursor: pointer; color: #c8d5dc; }
+.unmatched-details ul { display: grid; gap: 6px; padding-left: 21px; }
+.team-section { margin-top: 18px; }
+.section-note { margin: 18px 0 0; color: #95a3af; font-size: 13px; line-height: 1.65; }
+.detail-grid { display: grid; grid-template-columns: 1fr; gap: 18px; margin-top: 18px; }
+.detail-section { min-height: 130px; }
+@media (max-width: 760px) { .view-heading { align-items: flex-start; flex-direction: column; } .section-heading { align-items: flex-start; flex-direction: column; } }
+</style>

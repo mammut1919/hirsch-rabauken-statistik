@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
 import Select from 'primevue/select'
+import logo from './assets/hr-logo.jpg'
 import { useSeasonStore } from './stores/season'
 
 const seasonStore = useSeasonStore()
@@ -10,10 +11,13 @@ const { selectedSeason, seasons } = storeToRefs(seasonStore)
 <template>
   <div class="app-shell app-dark">
     <aside class="sidebar" aria-label="Hauptnavigation">
-      <div class="brand-mark" aria-hidden="true">HR</div>
+      <img class="brand-mark" :src="logo" alt="" aria-hidden="true" />
       <nav class="nav-list">
         <RouterLink class="nav-link" to="/" exact-active-class="is-active">
           <i class="pi pi-chart-bar" aria-hidden="true" /><span>Dashboard</span>
+        </RouterLink>
+        <RouterLink class="nav-link" to="/statistik" active-class="is-active">
+          <i class="pi pi-chart-line" aria-hidden="true" /><span>Statistik</span>
         </RouterLink>
         <RouterLink class="nav-link" to="/mannschaftsspiele" active-class="is-active">
           <i class="pi pi-flag" aria-hidden="true" /><span>Mannschaftsspiele</span>
