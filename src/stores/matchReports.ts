@@ -12,7 +12,9 @@ import {
 } from '../services/threeKDartsApi'
 
 const REPORT_CONCURRENCY = 1
-const ROUND_CONCURRENCY = 4
+const ROUND_CONCURRENCY = 2
+const MAX_ROUND_ATTEMPTS = 3
+const ROUND_RETRY_BASE_MS = 500
 const MAX_REPORT_ATTEMPTS = 3
 const REPORT_REQUEST_PAUSE_MS = 500
 const H1_SEASON_KEY = '2026-1'
@@ -59,23 +61,32 @@ export const useMatchReportsStore = defineStore('matchReports', () => {
   // Each season owns an independent report cache and request state, even if match IDs overlap.
   const reportsBySeason = ref<Record<string, Record<number, unknown>>>({})
   const matchIdsBySeason = ref<Record<string, number[]>>({})
+  const roundIdsBySeason = ref<Record<string, number[]>>({})
+  const roundDataBySeason = ref<Record<string, Record<number, ThreeKDartsRound>>>({})
+  const failedRoundsBySeason = ref<Record<string, Record<number, string>>>({})
   const failedReportsBySeason = ref<Record<string, Record<number, ReportAttemptRecord>>>({})
   const attemptCountsBySeason = ref<Record<string, Record<number, number>>>({})
   const attemptLogsBySeason = ref<Record<string, ReportAttemptRecord[]>>({})
   const roundErrorsBySeason = ref<Record<string, string[]>>({})
   const loadErrorsBySeason = ref<Record<string, string>>({})
   const loadingBySeason = ref<Record<string, boolean>>({})
+  const roundLoadingBySeason = ref<Record<string, boolean>>({})
+  const reportLoadingBySeason = ref<Record<string, boolean>>({})
   const roundCountsBySeason = ref<Record<string, number>>({})
   const completedRoundsBySeason = ref<Record<string, number>>({})
 
   function ensureSeasonState(seasonKey: string): void {
     reportsBySeason.value[seasonKey] ??= {}
     matchIdsBySeason.value[seasonKey] ??= []
+    roundDataBySeason.value[seasonKey] ??= {}
+    failedRoundsBySeason.value[seasonKey] ??= {}
     failedReportsBySeason.value[seasonKey] ??= {}
     attemptCountsBySeason.value[seasonKey] ??= {}
     attemptLogsBySeason.value[seasonKey] ??= []
     roundErrorsBySeason.value[seasonKey] ??= []
     loadingBySeason.value[seasonKey] ??= false
+    roundLoadingBySeason.value[seasonKey] ??= false
+    reportLoadingBySeason.value[seasonKey] ??= false
     roundCountsBySeason.value[seasonKey] ??= 0
     completedRoundsBySeason.value[seasonKey] ??= 0
   }
@@ -114,6 +125,22 @@ export const useMatchReportsStore = defineStore('matchReports', () => {
       ]),
     ),
   )
+  const failedRoundCountsBySeason = computed(() =>
+    Object.fromEntries(
+      Object.entries(failedRoundsBySeason.value).map(([seasonKey, failures]) => [
+        seasonKey,
+        Object.keys(failures).length,
+      ]),
+    ),
+  )
+  const successfulRoundCountsBySeason = computed(() =>
+    Object.fromEntries(
+      Object.entries(completedRoundsBySeason.value).map(([seasonKey, completed]) => [
+        seasonKey,
+        Math.max(0, completed - (failedRoundCountsBySeason.value[seasonKey] ?? 0)),
+      ]),
+    ),
+  )
 
   // H1 aliases preserve the existing diagnostic view and its controls.
   const reports = computed(() => reportsBySeason.value[H1_SEASON_KEY] ?? {})
@@ -132,6 +159,26 @@ export const useMatchReportsStore = defineStore('matchReports', () => {
   const progressPercent = computed(() => progressPercentsBySeason.value[H1_SEASON_KEY] ?? 0)
   const cachedReportCount = computed(() => Object.keys(reports.value).length)
   const requestAttemptCount = computed(() => attemptLog.value.length)
+
+  async function requestRoundWithRetries(
+    season: SeasonConfig,
+    roundId: number,
+  ): Promise<ThreeKDartsRound> {
+    let lastError: unknown
+    for (let attempt = 1; attempt <= MAX_ROUND_ATTEMPTS; attempt += 1) {
+      try {
+        return await fetchSeasonRound(season.eventId!, season.phaseId!, roundId)
+      } catch (error) {
+        lastError = error
+        if (attempt < MAX_ROUND_ATTEMPTS) {
+          await new Promise((resolve) =>
+            globalThis.setTimeout(resolve, ROUND_RETRY_BASE_MS * 2 ** (attempt - 1)),
+          )
+        }
+      }
+    }
+    throw lastError
+  }
 
   async function requestReport(season: SeasonConfig, matchId: number): Promise<void> {
     const seasonKey = season.key
@@ -183,6 +230,10 @@ export const useMatchReportsStore = defineStore('matchReports', () => {
     }
   }
 
+  function refreshRoundErrors(seasonKey: string): void {
+    roundErrorsBySeason.value[seasonKey] = Object.values(failedRoundsBySeason.value[seasonKey] ?? {})
+  }
+
   async function loadSeasonReports(season: SeasonConfig): Promise<void> {
     ensureSeasonState(season.key)
     if (loadingBySeason.value[season.key]) return
@@ -192,66 +243,82 @@ export const useMatchReportsStore = defineStore('matchReports', () => {
     }
 
     loadingBySeason.value[season.key] = true
-    loadErrorsBySeason.value[season.key] = ''
-    roundErrorsBySeason.value[season.key] = []
-    failedReportsBySeason.value[season.key] = {}
-    roundCountsBySeason.value[season.key] = 0
-    completedRoundsBySeason.value[season.key] = 0
+    roundLoadingBySeason.value[season.key] = true
+    reportLoadingBySeason.value[season.key] = false
 
     try {
-      const phase = await fetchSeasonPhase(season.eventId, season.phaseId)
-      const rounds = Array.isArray(phase.rounds) ? phase.rounds : []
-      const roundIds = [...new Set(
-        rounds
-          .map((round) => positiveId(round.id ?? round.roundId))
-          .filter((id): id is number => id !== null),
-      )]
-
+      let roundIds = roundIdsBySeason.value[season.key] ?? []
       if (roundIds.length === 0) {
-        throw new Error('Die Phasenantwort enth\u00e4lt keine g\u00fcltigen Runden-IDs.')
+        const phase = await fetchSeasonPhase(season.eventId, season.phaseId)
+        const rounds = Array.isArray(phase.rounds) ? phase.rounds : []
+        roundIds = [...new Set(
+          rounds
+            .map((round) => positiveId(round.id ?? round.roundId))
+            .filter((id): id is number => id !== null),
+        )]
+
+        if (roundIds.length === 0) {
+          throw new Error('Die Phasenantwort enth\u00e4lt keine g\u00fcltigen Runden-IDs.')
+        }
+        roundIdsBySeason.value[season.key] = roundIds
       }
 
       roundCountsBySeason.value[season.key] = roundIds.length
-      const allMatchIds = new Set<number>()
+      completedRoundsBySeason.value[season.key] =
+        roundIds.filter((roundId) => roundId in roundDataBySeason.value[season.key]!).length +
+        Object.keys(failedRoundsBySeason.value[season.key]!).length
+      const roundsToFetch = roundIds.filter(
+        (roundId) => !(roundId in roundDataBySeason.value[season.key]!),
+      )
 
-      await forEachConcurrent(roundIds, ROUND_CONCURRENCY, async (roundId) => {
+      await forEachConcurrent(roundsToFetch, ROUND_CONCURRENCY, async (roundId) => {
         try {
-          const round: ThreeKDartsRound = await fetchSeasonRound(
-            season.eventId!,
-            season.phaseId!,
-            roundId,
-          )
-          for (const matchId of getTeamMatchIds(round, season.participantId!)) {
-            allMatchIds.add(matchId)
-          }
+          const round = await requestRoundWithRetries(season, roundId)
+          roundDataBySeason.value[season.key]![roundId] = round
+          delete failedRoundsBySeason.value[season.key]![roundId]
         } catch (error) {
-          roundErrorsBySeason.value[season.key]!.push(
-            `Runde ${roundId}: ${error instanceof Error ? error.message : 'Unbekannter Fehler.'}`,
-          )
+          failedRoundsBySeason.value[season.key]![roundId] =
+            `Runde ${roundId}: ${error instanceof Error ? error.message : 'Unbekannter Fehler.'}`
         } finally {
+          refreshRoundErrors(season.key)
           completedRoundsBySeason.value[season.key] =
-            (completedRoundsBySeason.value[season.key] ?? 0) + 1
+            roundIds.filter((id) => id in roundDataBySeason.value[season.key]!).length +
+            Object.keys(failedRoundsBySeason.value[season.key]!).length
         }
       })
+      roundLoadingBySeason.value[season.key] = false
 
+      const allMatchIds = new Set<number>()
+      for (const roundId of roundIds) {
+        const round = roundDataBySeason.value[season.key]![roundId]
+        if (!round) continue
+        for (const matchId of getTeamMatchIds(round, season.participantId)) {
+          allMatchIds.add(matchId)
+        }
+      }
       matchIdsBySeason.value[season.key] = [...allMatchIds].sort((a, b) => a - b)
       if (matchIdsBySeason.value[season.key]!.length === 0) {
         throw new Error('Aus den Rundendaten konnten keine Match-IDs ermittelt werden.')
       }
+      loadErrorsBySeason.value[season.key] = ''
 
       const uncachedIds = matchIdsBySeason.value[season.key]!.filter(
         (id) => !(id in reportsBySeason.value[season.key]!),
       )
+      reportLoadingBySeason.value[season.key] = uncachedIds.length > 0
       await forEachConcurrent(uncachedIds, REPORT_CONCURRENCY, async (matchId, index) => {
         await requestReport(season, matchId)
         if (index < uncachedIds.length - 1) {
           await new Promise((resolve) => globalThis.setTimeout(resolve, REPORT_REQUEST_PAUSE_MS))
         }
       })
+      reportLoadingBySeason.value[season.key] = false
     } catch (error) {
       loadErrorsBySeason.value[season.key] =
         error instanceof Error ? error.message : 'Unbekannter Ladefehler.'
     } finally {
+      roundLoadingBySeason.value[season.key] = false
+      reportLoadingBySeason.value[season.key] = false
       loadingBySeason.value[season.key] = false
     }
   }
@@ -268,12 +335,17 @@ export const useMatchReportsStore = defineStore('matchReports', () => {
   function clearCache(): void {
     reportsBySeason.value = {}
     matchIdsBySeason.value = {}
+    roundIdsBySeason.value = {}
+    roundDataBySeason.value = {}
+    failedRoundsBySeason.value = {}
     failedReportsBySeason.value = {}
     attemptCountsBySeason.value = {}
     attemptLogsBySeason.value = {}
     roundErrorsBySeason.value = {}
     loadErrorsBySeason.value = {}
     loadingBySeason.value = {}
+    roundLoadingBySeason.value = {}
+    reportLoadingBySeason.value = {}
     roundCountsBySeason.value = {}
     completedRoundsBySeason.value = {}
   }
@@ -283,6 +355,8 @@ export const useMatchReportsStore = defineStore('matchReports', () => {
     if (!season || loading.value) return
     ensureSeasonState(season.key)
     loadingBySeason.value[season.key] = true
+    reportLoadingBySeason.value[season.key] = true
+    roundLoadingBySeason.value[season.key] = false
     loadErrorsBySeason.value[season.key] = ''
     roundErrorsBySeason.value[season.key] = []
     attemptLogsBySeason.value[season.key] = []
@@ -298,6 +372,7 @@ export const useMatchReportsStore = defineStore('matchReports', () => {
         }
       }
     } finally {
+      reportLoadingBySeason.value[season.key] = false
       loadingBySeason.value[season.key] = false
     }
   }
@@ -329,14 +404,21 @@ export const useMatchReportsStore = defineStore('matchReports', () => {
     requestAttemptCount,
     reportsBySeason,
     matchIdsBySeason,
+    roundIdsBySeason,
+    roundDataBySeason,
+    failedRoundsBySeason,
     failedReportsBySeason,
     attemptCountsBySeason,
     attemptLogsBySeason,
     roundErrorsBySeason,
     loadErrorsBySeason,
     loadingBySeason,
+    roundLoadingBySeason,
+    reportLoadingBySeason,
     roundCountsBySeason,
     completedRoundsBySeason,
+    successfulRoundCountsBySeason,
+    failedRoundCountsBySeason,
     loadedReportCounts,
     failedReportCounts,
     completedReportCounts,

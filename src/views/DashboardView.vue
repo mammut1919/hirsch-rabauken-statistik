@@ -1,22 +1,34 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { getAvailableSeasons } from '../services/seasonConfig'
 import type { SeasonTeamMatch } from '../services/teamSchedule'
 import { usePlayerRosterStore } from '../stores/playerRoster'
+import { useSeasonStore } from '../stores/season'
 
 const rosterStore = usePlayerRosterStore()
+const seasonStore = useSeasonStore()
 const { teamMatchesBySeason, loading, errors } = storeToRefs(rosterStore)
-const seasons = getAvailableSeasons().filter(({ key }) => key === '2026-2' || key === '2026-1')
-const orderedSeasons = ['2026-2', '2026-1']
-  .map((key) => seasons.find((season) => season.key === key))
+const { selectedSeason } = storeToRefs(seasonStore)
+const seasonOrder = ['2026-2', '2026-1']
+const availableSeasons = seasonOrder
+  .map((key) => getAvailableSeasons().find((season) => season.key === key))
   .filter((season) => season !== undefined)
+const visibleSeasons = computed(() =>
+  selectedSeason.value === 'all'
+    ? availableSeasons
+    : availableSeasons.filter(({ key }) => key === selectedSeason.value),
+)
 
-void rosterStore.loadRosters(orderedSeasons)
+watch(
+  visibleSeasons,
+  (seasons) => void rosterStore.loadRosters(seasons),
+  { immediate: true },
+)
 
 const sortedMatchesBySeason = computed(() => {
   return Object.fromEntries(
-    orderedSeasons.map(({ key }) => [
+    visibleSeasons.value.map(({ key }) => [
       key,
       [...(teamMatchesBySeason.value[key] ?? [])].sort(compareByDateDescending),
     ]),
@@ -60,7 +72,7 @@ function formatResult(match: SeasonTeamMatch): string {
   </div>
 
   <section
-    v-for="season in orderedSeasons"
+    v-for="season in visibleSeasons"
     :key="season.key"
     class="schedule-section"
     :aria-labelledby="`schedule-${season.key}`"

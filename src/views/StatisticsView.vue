@@ -30,14 +30,25 @@ const seasonStore = useSeasonStore()
 const {
   reportsBySeason,
   matchIdsBySeason,
-  loadingBySeason: reportLoadingBySeason,
+  loadingBySeason: seasonLoadingBySeason,
+  roundLoadingBySeason,
+  reportLoadingBySeason,
+  roundCountsBySeason,
+  completedRoundsBySeason,
+  successfulRoundCountsBySeason,
+  failedRoundCountsBySeason,
   loadErrorsBySeason: reportErrorsBySeason,
   roundErrorsBySeason,
   loadedReportCounts,
   failedReportCounts,
   completedReportCounts,
 } = storeToRefs(matchReportsStore)
-const { rosters, loading: rosterLoading, errors: rosterErrors } = storeToRefs(rosterStore)
+const {
+  rosters,
+  teamMatchesBySeason,
+  loading: rosterLoading,
+  errors: rosterErrors,
+} = storeToRefs(rosterStore)
 const { selectedSeason, selectedSeasonLabel } = storeToRefs(seasonStore)
 const showLegs = ref(false)
 const singlesSort = ref<StatisticsSortKey>(DEFAULT_STATISTICS_SORT)
@@ -92,6 +103,12 @@ const selectedReportTotal = computed(() =>
     0,
   ),
 )
+const selectedExpectedReportCount = computed(() =>
+  selectedSeasonConfigs.value.reduce(
+    (total, { key }) => total + (teamMatchesBySeason.value[key]?.length ?? matchIdsBySeason.value[key]?.length ?? 0),
+    0,
+  ),
+)
 const selectedFailedReportCount = computed(() =>
   selectedSeasonConfigs.value.reduce(
     (total, { key }) => total + (failedReportCounts.value[key] ?? 0),
@@ -101,6 +118,58 @@ const selectedFailedReportCount = computed(() =>
 const relevantReportsLoading = computed(() =>
   selectedSeasonConfigs.value.some(({ key }) => reportLoadingBySeason.value[key]),
 )
+const relevantRoundsLoading = computed(() =>
+  selectedSeasonConfigs.value.some(({ key }) => roundLoadingBySeason.value[key]),
+)
+const relevantSeasonLoading = computed(() =>
+  selectedSeasonConfigs.value.some(({ key }) => seasonLoadingBySeason.value[key]),
+)
+const selectedRoundTotal = computed(() =>
+  selectedSeasonConfigs.value.reduce((total, { key }) => total + (roundCountsBySeason.value[key] ?? 0), 0),
+)
+const selectedSuccessfulRoundCount = computed(() =>
+  selectedSeasonConfigs.value.reduce(
+    (total, { key }) => total + (successfulRoundCountsBySeason.value[key] ?? 0),
+    0,
+  ),
+)
+const selectedCompletedRoundCount = computed(() =>
+  selectedSeasonConfigs.value.reduce(
+    (total, { key }) => total + (completedRoundsBySeason.value[key] ?? 0),
+    0,
+  ),
+)
+const selectedFailedRoundCount = computed(() =>
+  selectedSeasonConfigs.value.reduce(
+    (total, { key }) => total + (failedRoundCountsBySeason.value[key] ?? 0),
+    0,
+  ),
+)
+const selectedRoundLoadHasError = computed(() =>
+  selectedSeasonConfigs.value.some(({ key }) => Boolean(reportErrorsBySeason.value[key])),
+)
+const hasRetryableErrors = computed(
+  () => selectedFailedRoundCount.value > 0 || selectedFailedReportCount.value > 0 || selectedRoundLoadHasError.value,
+)
+const roundProgressPercent = computed(() =>
+  selectedRoundTotal.value === 0
+    ? 0
+    : Math.floor((selectedCompletedRoundCount.value / selectedRoundTotal.value) * 100),
+)
+const allExpectedDataLoaded = computed(
+  () =>
+    !relevantSeasonLoading.value &&
+    selectedRoundTotal.value > 0 &&
+    selectedSuccessfulRoundCount.value === selectedRoundTotal.value &&
+    selectedFailedRoundCount.value === 0 &&
+    selectedExpectedReportCount.value > 0 &&
+    selectedLoadedReportCount.value === selectedExpectedReportCount.value &&
+    selectedFailedReportCount.value === 0,
+)
+
+function retryFailedLoads(): void {
+  void matchReportsStore.loadReports(selectedSeasonConfigs.value)
+}
 const reportProgressPercent = computed(() => {
   const total = selectedSeasonConfigs.value.reduce(
     (sum, { key }) => sum + (matchIdsBySeason.value[key]?.length ?? 0),
@@ -175,12 +244,25 @@ const relevantErrors = computed(() =>
 )
 const reportState = computed(() => {
   if (relevantReportsLoading.value) return { label: 'Lädt', severity: 'info' as const }
-  if (relevantErrors.value.length > 0) return { label: 'Fehler', severity: 'danger' as const }
+  if (selectedFailedReportCount.value > 0) return { label: 'Fehler', severity: 'danger' as const }
   if (selectedReportTotal.value === 0) return { label: 'Noch nicht geladen', severity: 'secondary' as const }
   if (selectedLoadedReportCount.value === selectedReportTotal.value) {
     return { label: 'Abgeschlossen', severity: 'success' as const }
   }
   return { label: 'Unvollständig', severity: 'warn' as const }
+})
+const roundState = computed(() => {
+  if (relevantRoundsLoading.value) return { label: 'Lädt', severity: 'info' as const }
+  if (selectedFailedRoundCount.value > 0 || selectedRoundLoadHasError.value) {
+    return { label: 'Fehler', severity: 'danger' as const }
+  }
+  if (selectedRoundTotal.value > 0 && selectedSuccessfulRoundCount.value === selectedRoundTotal.value) {
+    return { label: 'Abgeschlossen', severity: 'success' as const }
+  }
+  if (selectedRoundTotal.value === 0 && relevantSeasonLoading.value) {
+    return { label: 'Wird ermittelt', severity: 'secondary' as const }
+  }
+  return { label: 'Noch nicht geladen', severity: 'secondary' as const }
 })
 
 function percentage(summary: PlayerGameSummary): string {
@@ -215,7 +297,7 @@ function playerKey(player: PlayerStatisticsRow): string {
       <h2>Spielerstatistik</h2>
     </div>
     <Tag
-      :value="`${selectedLoadedReportCount} Matchreports im Cache`"
+      :value="`${selectedLoadedReportCount}/${selectedExpectedReportCount} Matchreports im Cache`"
       :severity="hasReports ? 'success' : 'secondary'"
     />
   </div>
@@ -230,6 +312,41 @@ function playerKey(player: PlayerStatisticsRow): string {
       <li v-for="error in relevantErrors" :key="error">{{ error }}</li>
     </ul>
   </Message>
+
+  <button
+    v-if="hasRetryableErrors"
+    class="retry-button"
+    type="button"
+    :disabled="relevantSeasonLoading"
+    @click="retryFailedLoads"
+  >
+    Erneut versuchen
+  </button>
+
+  <template v-if="!allExpectedDataLoaded">
+  <section class="report-load-status round-load-status" aria-live="polite" aria-label="Ladezustand der Saisonrunden">
+    <div class="report-status-heading">
+      <div>
+        <strong>Saisonrunden</strong>
+        <span>{{ selectedSuccessfulRoundCount }} von {{ selectedRoundTotal || '–' }} erfolgreich</span>
+        <span v-if="selectedFailedRoundCount > 0" class="load-error-count">
+          {{ selectedFailedRoundCount }} Runde(n) fehlgeschlagen
+        </span>
+      </div>
+      <Tag :value="roundState.label" :severity="roundState.severity" />
+    </div>
+    <div
+      v-if="selectedRoundTotal > 0"
+      class="report-progress-track"
+      role="progressbar"
+      aria-label="Fortschritt beim Laden der Saisonrunden"
+      :aria-valuenow="roundProgressPercent"
+      aria-valuemin="0"
+      aria-valuemax="100"
+    >
+      <div class="report-progress-value" :style="{ width: `${roundProgressPercent}%` }" />
+    </div>
+  </section>
 
   <section class="report-load-status" aria-live="polite" aria-label="Ladezustand der Matchreports">
     <div class="report-status-heading">
@@ -262,9 +379,10 @@ function playerKey(player: PlayerStatisticsRow): string {
       </template>
     </p>
   </section>
+  </template>
 
   <Message
-    v-if="!hasReports && !relevantReportsLoading && relevantErrors.length === 0"
+    v-if="!hasReports && !relevantSeasonLoading && relevantErrors.length === 0"
     severity="info"
     :closable="false"
     class="cache-message"
@@ -512,6 +630,24 @@ function playerKey(player: PlayerStatisticsRow): string {
 .cache-message {
   margin-bottom: 22px;
 }
+.retry-button {
+  margin: 0 0 18px;
+  padding: 8px 13px;
+  border: 1px solid #1a5558;
+  border-radius: 8px;
+  background: #123033;
+  color: #54e0d2;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+.retry-button:hover:not(:disabled) {
+  background: #174044;
+}
+.retry-button:disabled {
+  cursor: wait;
+  opacity: .55;
+}
 .cache-message p {
   margin: 6px 0 0;
 }
@@ -541,6 +677,9 @@ function playerKey(player: PlayerStatisticsRow): string {
 .cache-note {
   color: #95a3af;
   font-size: 12px;
+}
+.report-status-heading .load-error-count {
+  color: #f29c9c;
 }
 .report-progress-track {
   height: 7px;
