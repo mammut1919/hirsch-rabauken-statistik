@@ -11,6 +11,16 @@ import {
   type PlayerGameSummary,
   type PlayerStatisticsRow,
 } from '../services/playerStatistics'
+import {
+  calculateDoublesPairStatistics,
+  filterDoublesPairsByPlayer,
+} from '../services/doublesPairStatistics'
+import {
+  DEFAULT_STATISTICS_SORT,
+  STATISTICS_SORT_OPTIONS,
+  sortStatisticsRows,
+  type StatisticsSortKey,
+} from '../services/statisticsSorting'
 import { useMatchReportsStore } from '../stores/matchReports'
 import { usePlayerRosterStore } from '../stores/playerRoster'
 import { useSeasonStore } from '../stores/season'
@@ -22,6 +32,10 @@ const { reports, loadedReportCount } = storeToRefs(matchReportsStore)
 const { rosters, loading: rosterLoading, errors: rosterErrors } = storeToRefs(rosterStore)
 const { selectedSeason, selectedSeasonLabel } = storeToRefs(seasonStore)
 const showLegs = ref(false)
+const singlesSort = ref<StatisticsSortKey>(DEFAULT_STATISTICS_SORT)
+const doublesSort = ref<StatisticsSortKey>(DEFAULT_STATISTICS_SORT)
+const pairSort = ref<StatisticsSortKey>(DEFAULT_STATISTICS_SORT)
+const selectedPairPlayerId = ref('')
 const availableSeasons = getAvailableSeasons()
 
 const selectedSeasonConfigs = computed(() => {
@@ -32,6 +46,7 @@ const selectedSeasonConfigs = computed(() => {
 watch(
   selectedSeason,
   () => {
+    selectedPairPlayerId.value = ''
     void rosterStore.loadRosters(selectedSeasonConfigs.value)
   },
   { immediate: true },
@@ -59,6 +74,47 @@ const reportSets = computed(() => {
 })
 
 const statistics = computed(() => calculatePlayerStatistics(visibleRosters.value, reportSets.value))
+const doublesPairStatistics = computed(() =>
+  calculateDoublesPairStatistics(visibleRosters.value, reportSets.value),
+)
+const pairFilterPlayers = computed(() => {
+  const playersById = new Map<string, string>()
+  for (const season of selectedSeasonConfigs.value) {
+    for (const player of rosters.value[season.key] ?? []) {
+      if (!playersById.has(player.playerId)) playersById.set(player.playerId, player.displayName)
+    }
+  }
+  return [...playersById.entries()]
+    .map(([playerId, displayName]) => ({ playerId, displayName }))
+    .sort((a, b) => a.displayName.localeCompare(b.displayName, 'de'))
+})
+const filteredPairs = computed(() =>
+  filterDoublesPairsByPlayer(
+    doublesPairStatistics.value.pairs,
+    selectedPairPlayerId.value || null,
+  ),
+)
+const sortedSingles = computed(() =>
+  sortStatisticsRows(statistics.value.players, singlesSort.value, (player) => ({
+    name: player.displayName,
+    stableId: player.playerId,
+    ...player.singles,
+  })),
+)
+const sortedPlayerDoubles = computed(() =>
+  sortStatisticsRows(statistics.value.players, doublesSort.value, (player) => ({
+    name: player.displayName,
+    stableId: player.playerId,
+    ...player.doubles,
+  })),
+)
+const sortedPairs = computed(() =>
+  sortStatisticsRows(filteredPairs.value, pairSort.value, (pair) => ({
+    name: pair.displayNames.join(' & '),
+    stableId: pair.pairKey,
+    ...pair,
+  })),
+)
 const hasH1Reports = computed(() => reportSets.value.length > 0)
 const hasRosterForReports = computed(() =>
   reportSets.value.every(({ seasonKey }) => Boolean(visibleRosters.value[seasonKey])),
@@ -68,12 +124,12 @@ const relevantRostersLoading = computed(() =>
 )
 const relevantRosterErrors = computed(() =>
   selectedSeasonConfigs.value
-    .map(({ key, label }) => (rosterErrors.value[key] ? `${label}: ${rosterErrors.value[key]}` : null))
+    .map(({ key, label }) =>
+      rosterErrors.value[key] ? `${label}: ${rosterErrors.value[key]}` : null,
+    )
     .filter((error): error is string => error !== null),
 )
-const hasOnlyH1Reports = computed(
-  () => selectedSeason.value === 'all' && hasH1Reports.value,
-)
+const hasOnlyH1Reports = computed(() => selectedSeason.value === 'all' && hasH1Reports.value)
 
 function percentage(summary: PlayerGameSummary): string {
   return summary.winPercentage === null
@@ -112,7 +168,12 @@ function playerKey(player: PlayerStatisticsRow): string {
     />
   </div>
 
-  <Message v-if="relevantRosterErrors.length" severity="error" :closable="false" class="cache-message">
+  <Message
+    v-if="relevantRosterErrors.length"
+    severity="error"
+    :closable="false"
+    class="cache-message"
+  >
     <ul class="message-list">
       <li v-for="error in relevantRosterErrors" :key="error">{{ error }}</li>
     </ul>
@@ -123,7 +184,12 @@ function playerKey(player: PlayerStatisticsRow): string {
     Arbeitsspeicher-Store noch keine Matchreports vor.
   </Message>
 
-  <Message v-else-if="selectedSeason === '2026-2'" severity="info" :closable="false" class="cache-message">
+  <Message
+    v-else-if="selectedSeason === '2026-2'"
+    severity="info"
+    :closable="false"
+    class="cache-message"
+  >
     Für H2 2026 ist der offizielle Mannschaftskader verfügbar, aber der bestehende Matchreport-Store
     enthält derzeit nur H1-2026-Reports. Deshalb werden für H2 keine Spielzahlen als null oder
     ungespielt ausgegeben.
@@ -134,7 +200,8 @@ function playerKey(player: PlayerStatisticsRow): string {
       <strong>Keine passenden Matchreports im Arbeitsspeicher.</strong>
       <p>
         Öffne den <RouterLink to="/matchreport-test">Datenlade-Test</RouterLink>, um H1-2026-Reports
-        zu laden. Die Reports bleiben nur bis zum Neuladen oder Schließen der Anwendung im Pinia-Cache.
+        zu laden. Die Reports bleiben nur bis zum Neuladen oder Schließen der Anwendung im
+        Pinia-Cache.
       </p>
     </div>
   </Message>
@@ -163,6 +230,14 @@ function playerKey(player: PlayerStatisticsRow): string {
             <h4 id="singles-heading">Einzel (EZ)</h4>
             <Tag value="Einzel" severity="info" />
           </div>
+          <div class="table-controls">
+            <label :for="'singles-sort'">Sortierung</label>
+            <select id="singles-sort" v-model="singlesSort" aria-label="Einzelstatistik sortieren">
+              <option v-for="option in STATISTICS_SORT_OPTIONS" :key="option.value" :value="option.value">
+                {{ option.label }}
+              </option>
+            </select>
+          </div>
           <div class="table-scroll">
             <table>
               <thead>
@@ -179,7 +254,7 @@ function playerKey(player: PlayerStatisticsRow): string {
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="player in statistics.players" :key="playerKey(player)">
+                <tr v-for="player in sortedSingles" :key="playerKey(player)">
                   <th scope="row">{{ player.displayName }}</th>
                   <td>{{ player.singles.played }}</td>
                   <td>{{ player.singles.won }}</td>
@@ -203,6 +278,14 @@ function playerKey(player: PlayerStatisticsRow): string {
             <h4 id="doubles-heading">Doppel (DP)</h4>
             <Tag value="Doppel" severity="success" />
           </div>
+          <div class="table-controls">
+            <label for="doubles-sort">Sortierung</label>
+            <select id="doubles-sort" v-model="doublesSort" aria-label="Doppelstatistik sortieren">
+              <option v-for="option in STATISTICS_SORT_OPTIONS" :key="option.value" :value="option.value">
+                {{ option.label }}
+              </option>
+            </select>
+          </div>
           <div class="table-scroll">
             <table>
               <thead>
@@ -219,7 +302,7 @@ function playerKey(player: PlayerStatisticsRow): string {
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="player in statistics.players" :key="playerKey(player)">
+                <tr v-for="player in sortedPlayerDoubles" :key="playerKey(player)">
                   <th scope="row">{{ player.displayName }}</th>
                   <td>{{ player.doubles.played }}</td>
                   <td>{{ player.doubles.won }}</td>
@@ -240,14 +323,112 @@ function playerKey(player: PlayerStatisticsRow): string {
       </div>
 
       <details v-if="statistics.unmatchedNames.length" class="unmatched-details">
-        <summary>Nicht zugeordnete Namen und Datenfälle ({{ statistics.unmatchedNames.length }})</summary>
+        <summary>
+          Nicht zugeordnete Namen und Datenfälle ({{ statistics.unmatchedNames.length }})
+        </summary>
         <ul>
-          <li v-for="item in statistics.unmatchedNames" :key="`${item.seasonKey}-${item.displayName}-${item.reason}`">
+          <li
+            v-for="item in statistics.unmatchedNames"
+            :key="`${item.seasonKey}-${item.displayName}-${item.reason}`"
+          >
             {{ item.displayName }} · {{ kindLabel(item.reason) }} · {{ item.count }}×
           </li>
         </ul>
       </details>
     </template>
+  </section>
+
+  <section class="statistics-section pair-statistics" aria-labelledby="pair-heading">
+    <div class="section-heading">
+      <div>
+        <p class="eyebrow">PAARUNGEN · DP</p>
+        <h3 id="pair-heading">Doppel-Paarungen</h3>
+      </div>
+      <Tag :value="`${sortedPairs.length} Paarungen`" severity="success" />
+    </div>
+
+    <template v-if="hasH1Reports && hasRosterForReports && !relevantRostersLoading">
+      <div class="pair-table-controls">
+        <div class="table-controls">
+          <label for="pair-player-filter">Spieler</label>
+          <select
+            id="pair-player-filter"
+            v-model="selectedPairPlayerId"
+            aria-label="Doppel-Paarungen nach Spieler filtern"
+          >
+            <option value="">Alle Spieler</option>
+            <option
+              v-for="player in pairFilterPlayers"
+              :key="player.playerId"
+              :value="player.playerId"
+            >
+              {{ player.displayName }}
+            </option>
+          </select>
+        </div>
+        <div class="table-controls">
+          <label for="pair-sort">Sortierung</label>
+          <select id="pair-sort" v-model="pairSort" aria-label="Doppel-Paarungen sortieren">
+            <option v-for="option in STATISTICS_SORT_OPTIONS" :key="option.value" :value="option.value">
+              {{ option.label }}
+            </option>
+          </select>
+        </div>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Paarung</th>
+              <th scope="col">Gespielt</th>
+              <th scope="col">Gewonnen</th>
+              <th scope="col">Gewinnquote</th>
+              <template v-if="showLegs">
+                <th scope="col">Legs +</th>
+                <th scope="col">Legs −</th>
+                <th scope="col">Differenz</th>
+              </template>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="pair in sortedPairs" :key="pair.pairKey">
+              <th scope="row">{{ pair.displayNames.join(' & ') }}</th>
+              <td>{{ pair.played }}</td>
+              <td>{{ pair.won }}</td>
+              <td>{{ percentage(pair) }}</td>
+              <template v-if="showLegs">
+                <td>{{ legValue(pair.legsWon) }}</td>
+                <td>{{ legValue(pair.legsLost) }}</td>
+                <td>{{ legDifference(pair.legDifference) }}</td>
+              </template>
+            </tr>
+            <tr v-if="sortedPairs.length === 0">
+              <td :colspan="showLegs ? 7 : 4" class="empty-cell">
+                Keine abgeschlossenen Hirsch-Rabauken-Doppel gefunden.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <details v-if="doublesPairStatistics.unmatchedNames.length" class="unmatched-details">
+        <summary>
+          Nicht zugeordnete Doppel-Namen ({{ doublesPairStatistics.unmatchedNames.length }})
+        </summary>
+        <ul>
+          <li
+            v-for="item in doublesPairStatistics.unmatchedNames"
+            :key="`${item.seasonKey}-${item.displayName}-${item.reason}`"
+          >
+            {{ item.seasonKey }} · {{ item.displayName }} · {{ kindLabel(item.reason) }} ·
+            {{ item.count }}×
+          </li>
+        </ul>
+      </details>
+    </template>
+    <p v-else class="section-note">
+      Die Paarungsstatistik wird angezeigt, sobald passende Matchreports und der zugehörige
+      Saisonkader geladen sind.
+    </p>
   </section>
 
   <section class="statistics-section team-section" aria-labelledby="team-heading">
@@ -279,35 +460,190 @@ function playerKey(player: PlayerStatisticsRow): string {
 </template>
 
 <style scoped>
-.statistics-heading { align-items: flex-start; }
-.statistics-heading h2 { margin: 0; color: #eaf1f5; font-size: 22px; font-weight: 600; }
-.cache-message { margin-bottom: 22px; }
-.cache-message p { margin: 6px 0 0; }
-.cache-message a { color: #54e0d2; }
-.message-list { margin: 0; padding-left: 18px; }
-.loading-note { display: flex; align-items: center; gap: 10px; margin: 0 0 20px; color: #95a3af; font-size: 13px; }
-.statistics-section { padding: 22px; border: 1px solid #273640; border-radius: 14px; background: #0e161f; }
-.section-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 18px; }
-.section-heading .eyebrow { margin-bottom: 6px; }
-.section-heading h3 { margin: 0; color: #eaf1f5; font-size: 17px; font-weight: 600; }
-.legs-control { display: flex; align-items: center; gap: 10px; color: #c8d5dc; font-size: 13px; }
-.stats-grid { display: grid; grid-template-columns: 1fr; gap: 18px; }
-.stats-kind { min-width: 0; padding: 16px; border: 1px solid #273640; border-radius: 11px; background: #111b25; }
-.kind-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
-.kind-heading h4 { margin: 0; color: #eaf1f5; font-size: 15px; }
-.table-scroll { overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; color: #c8d5dc; font-size: 12px; text-align: left; }
-th, td { padding: 10px 9px; border-bottom: 1px solid #273640; white-space: nowrap; }
-thead th { color: #82919e; font-size: 11px; font-weight: 600; }
-tbody th { color: #eaf1f5; font-weight: 500; }
-tbody tr:last-child th, tbody tr:last-child td { border-bottom: 0; }
-.empty-cell { color: #82919e; text-align: center; }
-.unmatched-details { margin-top: 17px; color: #95a3af; font-size: 12px; }
-.unmatched-details summary { cursor: pointer; color: #c8d5dc; }
-.unmatched-details ul { display: grid; gap: 6px; padding-left: 21px; }
-.team-section { margin-top: 18px; }
-.section-note { margin: 18px 0 0; color: #95a3af; font-size: 13px; line-height: 1.65; }
-.detail-grid { display: grid; grid-template-columns: 1fr; gap: 18px; margin-top: 18px; }
-.detail-section { min-height: 130px; }
-@media (max-width: 760px) { .view-heading { align-items: flex-start; flex-direction: column; } .section-heading { align-items: flex-start; flex-direction: column; } }
+.statistics-heading {
+  align-items: flex-start;
+}
+.statistics-heading h2 {
+  margin: 0;
+  color: #eaf1f5;
+  font-size: 22px;
+  font-weight: 600;
+}
+.cache-message {
+  margin-bottom: 22px;
+}
+.cache-message p {
+  margin: 6px 0 0;
+}
+.cache-message a {
+  color: #54e0d2;
+}
+.message-list {
+  margin: 0;
+  padding-left: 18px;
+}
+.loading-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 20px;
+  color: #95a3af;
+  font-size: 13px;
+}
+.statistics-section {
+  padding: 22px;
+  border: 1px solid #273640;
+  border-radius: 14px;
+  background: #0e161f;
+}
+.section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.section-heading .eyebrow {
+  margin-bottom: 6px;
+}
+.section-heading h3 {
+  margin: 0;
+  color: #eaf1f5;
+  font-size: 17px;
+  font-weight: 600;
+}
+.legs-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #c8d5dc;
+  font-size: 13px;
+}
+.stats-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 18px;
+}
+.stats-kind {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid #273640;
+  border-radius: 11px;
+  background: #111b25;
+}
+.kind-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.kind-heading h4 {
+  margin: 0;
+  color: #eaf1f5;
+  font-size: 15px;
+}
+.table-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 9px;
+  color: #95a3af;
+  font-size: 12px;
+}
+.table-controls select {
+  max-width: 100%;
+  padding: 6px 28px 6px 9px;
+  border: 1px solid #2a3945;
+  border-radius: 7px;
+  background: #111b25;
+  color: #c8d5dc;
+  font: inherit;
+}
+.pair-table-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 18px;
+}
+.table-scroll {
+  overflow-x: auto;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  color: #c8d5dc;
+  font-size: 12px;
+  text-align: left;
+}
+th,
+td {
+  padding: 10px 9px;
+  border-bottom: 1px solid #273640;
+  white-space: nowrap;
+}
+thead th {
+  color: #82919e;
+  font-size: 11px;
+  font-weight: 600;
+}
+tbody th {
+  color: #eaf1f5;
+  font-weight: 500;
+}
+tbody tr:last-child th,
+tbody tr:last-child td {
+  border-bottom: 0;
+}
+.empty-cell {
+  color: #82919e;
+  text-align: center;
+}
+.unmatched-details {
+  margin-top: 17px;
+  color: #95a3af;
+  font-size: 12px;
+}
+.unmatched-details summary {
+  cursor: pointer;
+  color: #c8d5dc;
+}
+.unmatched-details ul {
+  display: grid;
+  gap: 6px;
+  padding-left: 21px;
+}
+.team-section {
+  margin-top: 18px;
+}
+.pair-statistics {
+  margin-top: 18px;
+}
+.section-note {
+  margin: 18px 0 0;
+  color: #95a3af;
+  font-size: 13px;
+  line-height: 1.65;
+}
+.detail-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 18px;
+  margin-top: 18px;
+}
+.detail-section {
+  min-height: 130px;
+}
+@media (max-width: 760px) {
+  .view-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .section-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
 </style>
