@@ -52,3 +52,18 @@ npm run test:unit
 ```sh
 npm run lint
 ```
+
+## Development and AI Assistance
+
+Hirsch-Rabauken-Statistik is a privately developed project.
+
+Generative AI tools (ChatGPT and Codex by OpenAI) were used to assist with the development process, including:
+
+- Software development and code implementation
+- Code generation, review, and refinement
+- Test creation and debugging
+- Design and refinement of visual elements
+
+The project concept, requirements, technical decisions, and review of the results were guided and supervised by the human project maintainer.
+
+Responsibility for the maintenance, operation, and publication of this project remains with the project maintainer.

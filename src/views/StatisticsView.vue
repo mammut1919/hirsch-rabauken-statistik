@@ -16,8 +16,10 @@ import {
 } from '../services/doublesPairStatistics'
 import {
   DEFAULT_STATISTICS_SORT,
-  STATISTICS_SORT_OPTIONS,
+  getStatisticsSortColumn,
   sortStatisticsRows,
+  toggleStatisticsSort,
+  type StatisticsSortColumn,
   type StatisticsSortKey,
 } from '../services/statisticsSorting'
 import { useMatchReportsStore } from '../stores/matchReports'
@@ -288,6 +290,20 @@ function kindLabel(reason: string): string {
 function playerKey(player: PlayerStatisticsRow): string {
   return player.playerId
 }
+
+function isSortedBy(sortKey: StatisticsSortKey, column: StatisticsSortColumn): boolean {
+  return getStatisticsSortColumn(sortKey) === column
+}
+
+function sortAria(sortKey: StatisticsSortKey, column: StatisticsSortColumn): 'ascending' | 'descending' | 'none' {
+  if (!isSortedBy(sortKey, column)) return 'none'
+  return sortKey.endsWith('-asc') ? 'ascending' : 'descending'
+}
+
+function sortIndicator(sortKey: StatisticsSortKey, column: StatisticsSortColumn): string {
+  if (!isSortedBy(sortKey, column)) return ''
+  return sortKey.endsWith('-asc') ? '▲' : '▼'
+}
 </script>
 
 <template>
@@ -395,12 +411,8 @@ function playerKey(player: PlayerStatisticsRow): string {
     <span>Offizielle Teilnehmerlisten werden geladen.</span>
   </div>
 
-  <section class="statistics-section player-statistics" aria-labelledby="player-heading">
+  <section class="statistics-section player-statistics" aria-label="Einzel und Doppel">
     <div class="section-heading">
-      <div>
-        <p class="eyebrow">KADER · EZ UND DP</p>
-        <h3 id="player-heading">Einzel- und Doppelstatistik</h3>
-      </div>
       <div class="legs-control">
         <label for="show-legs">Legs anzeigen</label>
         <ToggleSwitch id="show-legs" v-model="showLegs" aria-label="Leg-Informationen anzeigen" />
@@ -411,25 +423,33 @@ function playerKey(player: PlayerStatisticsRow): string {
       <div class="stats-grid">
         <section class="stats-kind" aria-labelledby="singles-heading">
           <div class="kind-heading">
-            <h4 id="singles-heading">Einzel (EZ)</h4>
+            <h4 id="singles-heading">Einzel</h4>
             <Tag value="Einzel" severity="info" />
-          </div>
-          <div class="table-controls">
-            <label :for="'singles-sort'">Sortierung</label>
-            <select id="singles-sort" v-model="singlesSort" aria-label="Einzelstatistik sortieren">
-              <option v-for="option in STATISTICS_SORT_OPTIONS" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </option>
-            </select>
           </div>
           <div class="table-scroll">
             <table>
               <thead>
                 <tr>
-                  <th scope="col">Spieler</th>
-                  <th scope="col">Gespielt</th>
-                  <th scope="col">Gewonnen</th>
-                  <th scope="col">Gewinnquote</th>
+                  <th scope="col" :aria-sort="sortAria(singlesSort, 'name')">
+                    <button class="sort-header" :class="{ 'is-sorted': isSortedBy(singlesSort, 'name') }" type="button" @click="singlesSort = toggleStatisticsSort(singlesSort, 'name')">
+                      Spieler <span aria-hidden="true">{{ sortIndicator(singlesSort, 'name') }}</span>
+                    </button>
+                  </th>
+                  <th scope="col" :aria-sort="sortAria(singlesSort, 'played')">
+                    <button class="sort-header" :class="{ 'is-sorted': isSortedBy(singlesSort, 'played') }" type="button" @click="singlesSort = toggleStatisticsSort(singlesSort, 'played')">
+                      Gespielt <span aria-hidden="true">{{ sortIndicator(singlesSort, 'played') }}</span>
+                    </button>
+                  </th>
+                  <th scope="col" :aria-sort="sortAria(singlesSort, 'won')">
+                    <button class="sort-header" :class="{ 'is-sorted': isSortedBy(singlesSort, 'won') }" type="button" @click="singlesSort = toggleStatisticsSort(singlesSort, 'won')">
+                      Gewonnen <span aria-hidden="true">{{ sortIndicator(singlesSort, 'won') }}</span>
+                    </button>
+                  </th>
+                  <th scope="col" :aria-sort="sortAria(singlesSort, 'winPercentage')">
+                    <button class="sort-header" :class="{ 'is-sorted': isSortedBy(singlesSort, 'winPercentage') }" type="button" @click="singlesSort = toggleStatisticsSort(singlesSort, 'winPercentage')">
+                      Gewinnquote <span aria-hidden="true">{{ sortIndicator(singlesSort, 'winPercentage') }}</span>
+                    </button>
+                  </th>
                   <template v-if="showLegs">
                     <th scope="col">Legs +</th>
                     <th scope="col">Legs −</th>
@@ -459,25 +479,33 @@ function playerKey(player: PlayerStatisticsRow): string {
 
         <section class="stats-kind" aria-labelledby="doubles-heading">
           <div class="kind-heading">
-            <h4 id="doubles-heading">Doppel (DP)</h4>
+            <h4 id="doubles-heading">Doppel</h4>
             <Tag value="Doppel" severity="success" />
-          </div>
-          <div class="table-controls">
-            <label for="doubles-sort">Sortierung</label>
-            <select id="doubles-sort" v-model="doublesSort" aria-label="Doppelstatistik sortieren">
-              <option v-for="option in STATISTICS_SORT_OPTIONS" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </option>
-            </select>
           </div>
           <div class="table-scroll">
             <table>
               <thead>
                 <tr>
-                  <th scope="col">Spieler</th>
-                  <th scope="col">Gespielt</th>
-                  <th scope="col">Gewonnen</th>
-                  <th scope="col">Gewinnquote</th>
+                  <th scope="col" :aria-sort="sortAria(doublesSort, 'name')">
+                    <button class="sort-header" :class="{ 'is-sorted': isSortedBy(doublesSort, 'name') }" type="button" @click="doublesSort = toggleStatisticsSort(doublesSort, 'name')">
+                      Spieler <span aria-hidden="true">{{ sortIndicator(doublesSort, 'name') }}</span>
+                    </button>
+                  </th>
+                  <th scope="col" :aria-sort="sortAria(doublesSort, 'played')">
+                    <button class="sort-header" :class="{ 'is-sorted': isSortedBy(doublesSort, 'played') }" type="button" @click="doublesSort = toggleStatisticsSort(doublesSort, 'played')">
+                      Gespielt <span aria-hidden="true">{{ sortIndicator(doublesSort, 'played') }}</span>
+                    </button>
+                  </th>
+                  <th scope="col" :aria-sort="sortAria(doublesSort, 'won')">
+                    <button class="sort-header" :class="{ 'is-sorted': isSortedBy(doublesSort, 'won') }" type="button" @click="doublesSort = toggleStatisticsSort(doublesSort, 'won')">
+                      Gewonnen <span aria-hidden="true">{{ sortIndicator(doublesSort, 'won') }}</span>
+                    </button>
+                  </th>
+                  <th scope="col" :aria-sort="sortAria(doublesSort, 'winPercentage')">
+                    <button class="sort-header" :class="{ 'is-sorted': isSortedBy(doublesSort, 'winPercentage') }" type="button" @click="doublesSort = toggleStatisticsSort(doublesSort, 'winPercentage')">
+                      Gewinnquote <span aria-hidden="true">{{ sortIndicator(doublesSort, 'winPercentage') }}</span>
+                    </button>
+                  </th>
                   <template v-if="showLegs">
                     <th scope="col">Legs +</th>
                     <th scope="col">Legs −</th>
@@ -525,7 +553,7 @@ function playerKey(player: PlayerStatisticsRow): string {
   <section class="statistics-section pair-statistics" aria-labelledby="pair-heading">
     <div class="section-heading">
       <div>
-        <p class="eyebrow">PAARUNGEN · DP</p>
+        <p class="eyebrow">PAARUNGSAUSWERTUNG</p>
         <h3 id="pair-heading">Doppel-Paarungen</h3>
       </div>
       <Tag :value="`${sortedPairs.length} Paarungen`" severity="success" />
@@ -550,23 +578,31 @@ function playerKey(player: PlayerStatisticsRow): string {
             </option>
           </select>
         </div>
-        <div class="table-controls">
-          <label for="pair-sort">Sortierung</label>
-          <select id="pair-sort" v-model="pairSort" aria-label="Doppel-Paarungen sortieren">
-            <option v-for="option in STATISTICS_SORT_OPTIONS" :key="option.value" :value="option.value">
-              {{ option.label }}
-            </option>
-          </select>
-        </div>
       </div>
       <div class="table-scroll">
         <table>
           <thead>
             <tr>
-              <th scope="col">Paarung</th>
-              <th scope="col">Gespielt</th>
-              <th scope="col">Gewonnen</th>
-              <th scope="col">Gewinnquote</th>
+              <th scope="col" :aria-sort="sortAria(pairSort, 'name')">
+                <button class="sort-header" :class="{ 'is-sorted': isSortedBy(pairSort, 'name') }" type="button" @click="pairSort = toggleStatisticsSort(pairSort, 'name')">
+                  Paarung <span aria-hidden="true">{{ sortIndicator(pairSort, 'name') }}</span>
+                </button>
+              </th>
+              <th scope="col" :aria-sort="sortAria(pairSort, 'played')">
+                <button class="sort-header" :class="{ 'is-sorted': isSortedBy(pairSort, 'played') }" type="button" @click="pairSort = toggleStatisticsSort(pairSort, 'played')">
+                  Gespielt <span aria-hidden="true">{{ sortIndicator(pairSort, 'played') }}</span>
+                </button>
+              </th>
+              <th scope="col" :aria-sort="sortAria(pairSort, 'won')">
+                <button class="sort-header" :class="{ 'is-sorted': isSortedBy(pairSort, 'won') }" type="button" @click="pairSort = toggleStatisticsSort(pairSort, 'won')">
+                  Gewonnen <span aria-hidden="true">{{ sortIndicator(pairSort, 'won') }}</span>
+                </button>
+              </th>
+              <th scope="col" :aria-sort="sortAria(pairSort, 'winPercentage')">
+                <button class="sort-header" :class="{ 'is-sorted': isSortedBy(pairSort, 'winPercentage') }" type="button" @click="pairSort = toggleStatisticsSort(pairSort, 'winPercentage')">
+                  Gewinnquote <span aria-hidden="true">{{ sortIndicator(pairSort, 'winPercentage') }}</span>
+                </button>
+              </th>
               <template v-if="showLegs">
                 <th scope="col">Legs +</th>
                 <th scope="col">Legs −</th>
@@ -729,6 +765,9 @@ function playerKey(player: PlayerStatisticsRow): string {
 .section-heading .eyebrow {
   margin-bottom: 6px;
 }
+.player-statistics > .section-heading {
+  justify-content: flex-end;
+}
 .section-heading h3 {
   margin: 0;
   color: #eaf1f5;
@@ -811,6 +850,28 @@ thead th {
   color: #82919e;
   font-size: 11px;
   font-weight: 600;
+}
+.sort-header {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.sort-header:hover,
+.sort-header:focus-visible {
+  color: #c8d5dc;
+}
+.sort-header.is-sorted {
+  color: #eaf1f5;
+  font-weight: 700;
+}
+.sort-header span {
+  margin-left: 3px;
+  color: #54e0d2;
+  font-size: 9px;
 }
 tbody th {
   color: #eaf1f5;

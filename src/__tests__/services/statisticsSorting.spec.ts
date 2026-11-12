@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_STATISTICS_SORT,
   sortStatisticsRows,
+  toggleStatisticsSort,
   type StatisticsSortKey,
 } from '../../services/statisticsSorting'
 
@@ -20,9 +21,9 @@ function sortedIds(sortKey: StatisticsSortKey): string[] {
 }
 
 describe('statistics table sorting', () => {
-  it('defaults to played games descending', () => {
-    expect(DEFAULT_STATISTICS_SORT).toBe('played-desc')
-    expect(sortedIds(DEFAULT_STATISTICS_SORT)).toEqual(['c', 'z', 'a', 'b', 'd', 'e', 'n'])
+  it('defaults to player name ascending', () => {
+    expect(DEFAULT_STATISTICS_SORT).toBe('name-asc')
+    expect(sortedIds(DEFAULT_STATISTICS_SORT)).toEqual(['a', 'b', 'c', 'd', 'e', 'n', 'z'])
   })
 
   it.each([
@@ -44,5 +45,14 @@ describe('statistics table sorting', () => {
       sortedIds('winPercentage-desc').indexOf('e'),
     )
     expect(rows.map(({ id }) => id)).toEqual(originalOrder)
+  })
+
+  it('uses column defaults and reverses direction on repeated column clicks', () => {
+    expect(toggleStatisticsSort('played-desc', 'name')).toBe('name-asc')
+    expect(toggleStatisticsSort('name-asc', 'name')).toBe('name-desc')
+    expect(toggleStatisticsSort('name-desc', 'name')).toBe('name-asc')
+    expect(toggleStatisticsSort('name-desc', 'played')).toBe('played-desc')
+    expect(toggleStatisticsSort('played-desc', 'played')).toBe('played-asc')
+    expect(toggleStatisticsSort('won-asc', 'winPercentage')).toBe('winPercentage-desc')
   })
 })

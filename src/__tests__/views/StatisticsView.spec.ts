@@ -52,6 +52,19 @@ function setupView(options: { roundFailed?: boolean; reportFailed?: boolean; loa
 }
 
 describe('StatisticsView loading controls', () => {
+  it('uses the simplified section headings and has no sort dropdowns', () => {
+    const { wrapper } = setupView({ allLoaded: true })
+
+    expect(wrapper.find('#singles-heading').text()).toBe('Einzel')
+    expect(wrapper.find('#doubles-heading').text()).toBe('Doppel')
+    expect(wrapper.find('#pair-heading').text()).toBe('Doppel-Paarungen')
+    expect(wrapper.text()).not.toContain('Einzel- und Doppelstatistik')
+    expect(wrapper.text()).not.toContain('(EZ)')
+    expect(wrapper.text()).not.toContain('(DP)')
+    expect(wrapper.findAll('select')).toHaveLength(1)
+    expect(wrapper.find('#pair-player-filter').exists()).toBe(true)
+  })
+
   it('shows a retry button on failures and retries the currently selected season', async () => {
     const { wrapper, matchStore, season } = setupView({ roundFailed: true, reportFailed: true })
 

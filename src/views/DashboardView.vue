@@ -72,6 +72,25 @@ function formatResult(match: SeasonTeamMatch): string {
   return `${match.setsHome} : ${match.setsAway}`
 }
 
+function resultForTeam(
+  match: SeasonTeamMatch,
+): { home: number; away: number; teamIsHome: boolean } | null {
+  if (
+    match.statusCd !== 'FINISH' ||
+    match.setsHome === null ||
+    match.setsAway === null
+  ) {
+    return null
+  }
+  if (isTeam(match.participantHome.displayName)) {
+    return { home: match.setsHome, away: match.setsAway, teamIsHome: true }
+  }
+  if (isTeam(match.participantGuest.displayName)) {
+    return { home: match.setsHome, away: match.setsAway, teamIsHome: false }
+  }
+  return null
+}
+
 function isTeam(name: string | null): boolean {
   return name?.trim().toLocaleLowerCase('de-DE') === 'hirsch-rabauken'
 }
@@ -141,7 +160,6 @@ function isTeamStanding(
               <tr
                 v-for="match in sortedMatchesBySeason[season.key]"
                 :key="match.matchId"
-                :class="{ 'team-match-row': isTeam(match.participantHome.displayName) || isTeam(match.participantGuest.displayName) }"
               >
                 <td>{{ formatDate(match.datePlanned) }}</td>
                 <td :class="{ 'team-name': isTeam(match.participantHome.displayName) }">
@@ -151,7 +169,17 @@ function isTeamStanding(
                   {{ match.participantGuest.displayName ?? '–' }}
                 </td>
                 <td>
-                  <span :class="match.statusCd === 'FINISH' ? 'match-result' : 'match-open'">
+                  <span v-if="match.statusCd !== 'FINISH'" class="match-open">Offen</span>
+                  <span v-else-if="resultForTeam(match)" class="match-result">
+                    <span :class="{ 'team-score': resultForTeam(match)?.teamIsHome }">
+                      {{ resultForTeam(match)?.home }}
+                    </span>
+                    <span> : </span>
+                    <span :class="{ 'team-score': !resultForTeam(match)?.teamIsHome }">
+                      {{ resultForTeam(match)?.away }}
+                    </span>
+                  </span>
+                  <span v-else class="match-result">
                     {{ formatResult(match) }}
                   </span>
                 </td>
@@ -337,32 +365,21 @@ tbody tr:last-child td {
   border-bottom: 0;
 }
 
-.team-match-row {
-  background: #11252a;
-}
-
-.team-match-row td {
-  border-bottom-color: #24434a;
-}
-
 .team-name {
-  color: #eaf1f5;
-  font-weight: 700;
-}
-
-.team-match-row .match-result,
-.team-match-row .match-open {
-  font-weight: 800;
+  color: #54e0d2;
 }
 
 .match-result {
-  color: #eaf1f5;
+  color: #c8d5dc;
   font-variant-numeric: tabular-nums;
-  font-weight: 600;
+}
+
+.team-score {
+  color: #54e0d2;
 }
 
 .match-open {
-  color: #50cfc3;
+  color: #c8d5dc;
 }
 
 @media (max-width: 760px) {

@@ -8,7 +8,26 @@ export type StatisticsSortKey =
   | 'winPercentage-desc'
   | 'winPercentage-asc'
 
-export const DEFAULT_STATISTICS_SORT: StatisticsSortKey = 'played-desc'
+export const DEFAULT_STATISTICS_SORT: StatisticsSortKey = 'name-asc'
+
+export type StatisticsSortColumn = 'name' | 'played' | 'won' | 'winPercentage'
+
+export function getStatisticsSortColumn(sortKey: StatisticsSortKey): StatisticsSortColumn {
+  if (sortKey.startsWith('winPercentage')) return 'winPercentage'
+  if (sortKey.startsWith('played')) return 'played'
+  if (sortKey.startsWith('won')) return 'won'
+  return 'name'
+}
+
+export function toggleStatisticsSort(
+  currentSort: StatisticsSortKey,
+  column: StatisticsSortColumn,
+): StatisticsSortKey {
+  if (getStatisticsSortColumn(currentSort) === column) {
+    return `${column}-${currentSort.endsWith('-asc') ? 'desc' : 'asc'}` as StatisticsSortKey
+  }
+  return `${column}-${column === 'name' ? 'asc' : 'desc'}` as StatisticsSortKey
+}
 
 export const STATISTICS_SORT_OPTIONS: ReadonlyArray<{
   value: StatisticsSortKey

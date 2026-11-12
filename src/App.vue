@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
 import Select from 'primevue/select'
-import logo from './assets/hr-logo.jpg'
+import logo from './assets/hr-logo.png'
 import { useSeasonStore } from './stores/season'
 
 const seasonStore = useSeasonStore()

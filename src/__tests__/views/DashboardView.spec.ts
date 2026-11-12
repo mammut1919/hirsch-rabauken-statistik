@@ -10,14 +10,24 @@ import { useTeamStandingsStore } from '../../stores/teamStandings'
 import type { SeasonTeamMatch } from '../../services/teamSchedule'
 import type { TeamStandingRow } from '../../services/teamStandings'
 
-const match = (matchId: number, opponent: string): SeasonTeamMatch => ({
+const match = (
+  matchId: number,
+  opponent: string,
+  teamSide: 'home' | 'guest' = 'home',
+  setsHome: number | null = null,
+  setsAway: number | null = null,
+): SeasonTeamMatch => ({
   matchId,
   datePlanned: '2026-05-01T18:00:00Z',
-  participantHome: { id: 527581, displayName: 'Hirsch-Rabauken' },
-  participantGuest: { id: 1, displayName: opponent },
-  statusCd: 'OPEN',
-  setsHome: null,
-  setsAway: null,
+  participantHome: teamSide === 'home'
+    ? { id: 527581, displayName: 'Hirsch-Rabauken' }
+    : { id: 1, displayName: opponent },
+  participantGuest: teamSide === 'guest'
+    ? { id: 527581, displayName: 'Hirsch-Rabauken' }
+    : { id: 1, displayName: opponent },
+  statusCd: setsHome === null || setsAway === null ? 'OPEN' : 'FINISH',
+  setsHome,
+  setsAway,
   legsHome: null,
   legsAway: null,
   roundName: null,
@@ -53,7 +63,10 @@ describe('Dashboard season selection', () => {
     const h2 = seasons.find(({ key }) => key === '2026-2')!
     rosterStore.rosters[h1.key] = []
     rosterStore.rosters[h2.key] = []
-    rosterStore.teamMatchesBySeason[h1.key] = [match(1, 'H1 Heim')]
+    rosterStore.teamMatchesBySeason[h1.key] = [
+      match(1, 'H1 Heim', 'home', 3, 2),
+      match(3, 'H1 Auswärts', 'guest', 1, 4),
+    ]
     rosterStore.teamMatchesBySeason[h2.key] = [match(2, 'H2 Heim')]
     standingsStore.standingsBySeason[h1.key] = [
       standing('Team H1 via ID', 1, 527581),
@@ -76,8 +89,16 @@ describe('Dashboard season selection', () => {
     expect(wrapper.findAll('a.ranking-link')).toHaveLength(0)
     expect(wrapper.find('.ranking-table').text()).toContain('28 : 21')
     expect(loadStandings).toHaveBeenLastCalledWith([h1])
-    expect(wrapper.find('tbody tr').classes()).toContain('team-match-row')
+    expect(wrapper.find('tbody tr').classes()).not.toContain('team-match-row')
     expect(wrapper.find('td.team-name').text()).toBe('Hirsch-Rabauken')
+    const h1Rows = wrapper.findAll('.schedule-panel tbody tr')
+    expect(h1Rows[0]?.find('.match-result').text()).toBe('3 : 2')
+    expect(h1Rows[0]?.findAll('.team-score')).toHaveLength(1)
+    expect(h1Rows[0]?.find('.team-score').text()).toBe('3')
+    expect(h1Rows[0]?.find('.match-result > span:last-child').classes()).not.toContain('team-score')
+    expect(h1Rows[1]?.find('.match-result').text()).toBe('1 : 4')
+    expect(h1Rows[1]?.find('.team-score').text()).toBe('4')
+    expect(wrapper.findAll('.schedule-panel td.team-name')).toHaveLength(2)
     expect(wrapper.find('.team-standing-row').text()).toContain('Team H1 via ID')
     expect(wrapper.findAll('.team-standing-row')).toHaveLength(1)
 
@@ -97,6 +118,7 @@ describe('Dashboard season selection', () => {
     expect(loadRosters).toHaveBeenLastCalledWith([h2])
     expect(wrapper.findAll('.ranking-table')).toHaveLength(1)
     expect(wrapper.find('.ranking-table').text()).toContain('Gegner H2')
+    expect(wrapper.find('.schedule-panel .match-open').text()).toBe('Offen')
     expect(loadStandings).toHaveBeenLastCalledWith([h2])
     expect(loadRosters).toHaveBeenCalledTimes(3)
   })
