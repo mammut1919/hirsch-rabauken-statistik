@@ -19,18 +19,6 @@ const { selectedSeason, seasons } = storeToRefs(seasonStore)
         <RouterLink class="nav-link" to="/statistik" active-class="is-active">
           <i class="pi pi-chart-line" aria-hidden="true" /><span>Statistik</span>
         </RouterLink>
-        <RouterLink class="nav-link" to="/mannschaftsspiele" active-class="is-active">
-          <i class="pi pi-flag" aria-hidden="true" /><span>Mannschaftsspiele</span>
-        </RouterLink>
-        <RouterLink class="nav-link" to="/spieler" active-class="is-active">
-          <i class="pi pi-users" aria-hidden="true" /><span>Spieler</span>
-        </RouterLink>
-        <RouterLink class="nav-link" to="/doppel" active-class="is-active">
-          <i class="pi pi-share-alt" aria-hidden="true" /><span>Doppel</span>
-        </RouterLink>
-        <RouterLink class="nav-link" to="/einstellungen" active-class="is-active">
-          <i class="pi pi-cog" aria-hidden="true" /><span>Einstellungen</span>
-        </RouterLink>
       </nav>
       <div class="sidebar-footer">Hirsch-Rabauken</div>
     </aside>

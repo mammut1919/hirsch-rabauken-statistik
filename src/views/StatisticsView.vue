@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import Card from 'primevue/card'
 import Message from 'primevue/message'
 import Tag from 'primevue/tag'
 import ToggleSwitch from 'primevue/toggleswitch'
@@ -33,7 +32,9 @@ const {
   matchIdsBySeason,
   loadingBySeason: reportLoadingBySeason,
   loadErrorsBySeason: reportErrorsBySeason,
+  roundErrorsBySeason,
   loadedReportCounts,
+  failedReportCounts,
   completedReportCounts,
 } = storeToRefs(matchReportsStore)
 const { rosters, loading: rosterLoading, errors: rosterErrors } = storeToRefs(rosterStore)
@@ -82,6 +83,18 @@ const reportSets = computed(() => {
 const selectedLoadedReportCount = computed(() =>
   selectedSeasonConfigs.value.reduce(
     (total, { key }) => total + (loadedReportCounts.value[key] ?? 0),
+    0,
+  ),
+)
+const selectedReportTotal = computed(() =>
+  selectedSeasonConfigs.value.reduce(
+    (total, { key }) => total + (matchIdsBySeason.value[key]?.length ?? 0),
+    0,
+  ),
+)
+const selectedFailedReportCount = computed(() =>
+  selectedSeasonConfigs.value.reduce(
+    (total, { key }) => total + (failedReportCounts.value[key] ?? 0),
     0,
   ),
 )
@@ -152,10 +165,23 @@ const relevantRostersLoading = computed(() =>
 )
 const relevantErrors = computed(() =>
   selectedSeasonConfigs.value.flatMap(({ key, label }) => [
-    rosterErrors.value[key] ? `${label} Kader: ${rosterErrors.value[key]}` : null,
-    reportErrorsBySeason.value[key] ? `${label} Reports: ${reportErrorsBySeason.value[key]}` : null,
-  ]).filter((error): error is string => error !== null),
+    ...(rosterErrors.value[key] ? [`${label} Kader: ${rosterErrors.value[key]}`] : []),
+    ...(reportErrorsBySeason.value[key] ? [`${label} Reports: ${reportErrorsBySeason.value[key]}`] : []),
+    ...((failedReportCounts.value[key] ?? 0) > 0
+      ? [`${label}: ${failedReportCounts.value[key]} Matchreports fehlgeschlagen.`]
+      : []),
+    ...(roundErrorsBySeason.value[key] ?? []).map((error) => `${label}: ${error}`),
+  ]),
 )
+const reportState = computed(() => {
+  if (relevantReportsLoading.value) return { label: 'Lädt', severity: 'info' as const }
+  if (relevantErrors.value.length > 0) return { label: 'Fehler', severity: 'danger' as const }
+  if (selectedReportTotal.value === 0) return { label: 'Noch nicht geladen', severity: 'secondary' as const }
+  if (selectedLoadedReportCount.value === selectedReportTotal.value) {
+    return { label: 'Abgeschlossen', severity: 'success' as const }
+  }
+  return { label: 'Unvollständig', severity: 'warn' as const }
+})
 
 function percentage(summary: PlayerGameSummary): string {
   return summary.winPercentage === null
@@ -205,22 +231,50 @@ function playerKey(player: PlayerStatisticsRow): string {
     </ul>
   </Message>
 
-  <Message v-else-if="!hasReports && !relevantReportsLoading" severity="info" :closable="false" class="cache-message">
-    <div>
-      <strong>Für die ausgewählte Saison sind noch keine Matchreports verfügbar.</strong>
-      <p>
-        Die Reports der ausgewählten Saison werden automatisch geladen und bleiben bis zum Neuladen
-        oder Schließen der Anwendung im Pinia-Cache.
-      </p>
+  <section class="report-load-status" aria-live="polite" aria-label="Ladezustand der Matchreports">
+    <div class="report-status-heading">
+      <div>
+        <strong>Matchreports</strong>
+        <span>
+          {{ selectedLoadedReportCount }} von {{ selectedReportTotal || '–' }} geladen
+          <template v-if="selectedReportTotal === 0 && relevantReportsLoading">
+            · Begegnungen werden ermittelt
+          </template>
+        </span>
+      </div>
+      <Tag :value="reportState.label" :severity="reportState.severity" />
     </div>
+    <div
+      v-if="selectedReportTotal > 0"
+      class="report-progress-track"
+      role="progressbar"
+      aria-label="Fortschritt beim Laden der Matchreports"
+      :aria-valuenow="reportProgressPercent"
+      aria-valuemin="0"
+      aria-valuemax="100"
+    >
+      <div class="report-progress-value" :style="{ width: `${reportProgressPercent}%` }" />
+    </div>
+    <p class="cache-note">
+      Der Report-Cache gilt nur bis zum Neuladen oder Schließen der Anwendung.
+      <template v-if="selectedFailedReportCount > 0">
+        {{ selectedFailedReportCount }} Report(s) konnten nicht geladen werden.
+      </template>
+    </p>
+  </section>
+
+  <Message
+    v-if="!hasReports && !relevantReportsLoading && relevantErrors.length === 0"
+    severity="info"
+    :closable="false"
+    class="cache-message"
+  >
+    Für die ausgewählte Saison sind noch keine Matchreports verfügbar.
   </Message>
 
-  <div v-if="relevantRostersLoading || relevantReportsLoading" class="loading-note" role="status">
+  <div v-if="relevantRostersLoading" class="loading-note" role="status">
     <i class="pi pi-spin pi-spinner" aria-hidden="true" />
-    <span>
-      <template v-if="relevantRostersLoading">Offizielle Teilnehmerlisten werden geladen.</template>
-      <template v-else>Matchreports werden geladen ({{ reportProgressPercent }} %).</template>
-    </span>
+    <span>Offizielle Teilnehmerlisten werden geladen.</span>
   </div>
 
   <section class="statistics-section player-statistics" aria-labelledby="player-heading">
@@ -443,32 +497,6 @@ function playerKey(player: PlayerStatisticsRow): string {
     </p>
   </section>
 
-  <section class="statistics-section team-section" aria-labelledby="team-heading">
-    <div class="section-heading">
-      <div>
-        <p class="eyebrow">MANNSCHAFT</p>
-        <h3 id="team-heading">Spielübersicht</h3>
-      </div>
-      <Tag value="Nicht aus Matchreports abgeleitet" severity="secondary" />
-    </div>
-    <p class="section-note">
-      Mannschaftsergebnisse werden weiterhin nicht aus Einzel- oder Doppel-Legs geschätzt. Der
-      Mannschaftsspielplan ist nicht Teil dieser Spielerstatistik.
-    </p>
-  </section>
-
-  <div class="detail-grid">
-    <section class="statistics-section detail-section" aria-labelledby="records-heading">
-      <div class="section-heading">
-        <div>
-          <p class="eyebrow">LEISTUNGEN</p>
-          <h3 id="records-heading">Bestleistungen</h3>
-        </div>
-        <Tag value="Nicht ausgewiesen" severity="secondary" />
-      </div>
-      <p class="section-note">180er und weitere Bestleistungen werden nicht berechnet.</p>
-    </section>
-  </div>
 </template>
 
 <style scoped>
@@ -486,6 +514,50 @@ function playerKey(player: PlayerStatisticsRow): string {
 }
 .cache-message p {
   margin: 6px 0 0;
+}
+.report-load-status {
+  margin-bottom: 22px;
+  padding: 14px 16px;
+  border: 1px solid #273640;
+  border-radius: 10px;
+  background: #111b25;
+  color: #c8d5dc;
+}
+.report-status-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.report-status-heading > div {
+  display: grid;
+  gap: 4px;
+}
+.report-status-heading strong {
+  color: #eaf1f5;
+  font-size: 13px;
+}
+.report-status-heading span,
+.cache-note {
+  color: #95a3af;
+  font-size: 12px;
+}
+.report-progress-track {
+  height: 7px;
+  margin-top: 12px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #1b2732;
+}
+.report-progress-value {
+  height: 100%;
+  border-radius: inherit;
+  background: #39c9bb;
+  transition: width 180ms ease;
+}
+.cache-note {
+  margin: 10px 0 0;
+  line-height: 1.5;
 }
 .cache-message a {
   color: #54e0d2;
@@ -627,9 +699,6 @@ tbody tr:last-child td {
   gap: 6px;
   padding-left: 21px;
 }
-.team-section {
-  margin-top: 18px;
-}
 .pair-statistics {
   margin-top: 18px;
 }
@@ -638,15 +707,6 @@ tbody tr:last-child td {
   color: #95a3af;
   font-size: 13px;
   line-height: 1.65;
-}
-.detail-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 18px;
-  margin-top: 18px;
-}
-.detail-section {
-  min-height: 130px;
 }
 @media (max-width: 760px) {
   .view-heading {
