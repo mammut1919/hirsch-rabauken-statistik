@@ -50,6 +50,30 @@ export interface ThreeKDartsRound {
   matches?: ThreeKDartsScheduleMatch[]
 }
 
+export interface ThreeKDartsTableTeamEntry {
+  placement?: number | null
+  participantName?: string | null
+  participantId?: number | string | null
+  matchCount?: number | null
+  win?: number | null
+  lost?: number | null
+  tie?: number | null
+  points1?: number | null
+  points2?: number | null
+  sets1?: number | null
+  sets2?: number | null
+  legs1?: number | null
+  legs2?: number | null
+}
+
+export interface ThreeKDartsTableGroup {
+  tableEntries?: ThreeKDartsTableTeamEntry[] | null
+}
+
+export interface ThreeKDartsTableResponse {
+  tableEntries?: ThreeKDartsTableGroup[] | null
+}
+
 export interface ThreeKDartsParticipantResponse {
   participant?: {
     id?: number | string
@@ -247,6 +271,18 @@ export async function fetchSeasonRound(
     `Die Rundenabfrage ${roundId}`,
   )
   return data as ThreeKDartsRound
+}
+
+export function getSeasonTableUrl(eventId: number): string {
+  return `${dsabApiBaseUrl}/frontend/event/${eventId}/phase/0/round/0/table`
+}
+
+export async function fetchSeasonTable(
+  eventId: number,
+  fetcher: typeof fetch = fetch,
+): Promise<ThreeKDartsTableResponse> {
+  const data = asRecord(await fetchJson(getSeasonTableUrl(eventId), fetcher), 'Die Ranglistenabfrage')
+  return data as ThreeKDartsTableResponse
 }
 
 export function fetchMatchReport(eventId: number, matchId: number): Promise<unknown> {

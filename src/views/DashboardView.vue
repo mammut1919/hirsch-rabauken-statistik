@@ -5,14 +5,19 @@ import { getAvailableSeasons } from '../services/seasonConfig'
 import type { SeasonTeamMatch } from '../services/teamSchedule'
 import { usePlayerRosterStore } from '../stores/playerRoster'
 import { useSeasonStore } from '../stores/season'
+import { useTeamStandingsStore } from '../stores/teamStandings'
 
 const rosterStore = usePlayerRosterStore()
+const standingsStore = useTeamStandingsStore()
 const seasonStore = useSeasonStore()
 const { teamMatchesBySeason, loading, errors } = storeToRefs(rosterStore)
+const { standingsBySeason, loadingBySeason: standingsLoading, errorsBySeason: standingsErrors } =
+  storeToRefs(standingsStore)
 const { selectedSeason } = storeToRefs(seasonStore)
 const seasonOrder = ['2026-2', '2026-1']
+const configuredSeasons = getAvailableSeasons()
 const availableSeasons = seasonOrder
-  .map((key) => getAvailableSeasons().find((season) => season.key === key))
+  .map((key) => configuredSeasons.find((season) => season.key === key))
   .filter((season) => season !== undefined)
 const visibleSeasons = computed(() =>
   selectedSeason.value === 'all'
@@ -23,6 +28,11 @@ const visibleSeasons = computed(() =>
 watch(
   visibleSeasons,
   (seasons) => void rosterStore.loadRosters(seasons),
+  { immediate: true },
+)
+watch(
+  visibleSeasons,
+  (seasons) => void standingsStore.loadStandingsForSeasons(seasons),
   { immediate: true },
 )
 
@@ -61,6 +71,21 @@ function formatResult(match: SeasonTeamMatch): string {
   if (match.setsHome === null || match.setsAway === null) return '–'
   return `${match.setsHome} : ${match.setsAway}`
 }
+
+function isTeam(name: string | null): boolean {
+  return name?.trim().toLocaleLowerCase('de-DE') === 'hirsch-rabauken'
+}
+
+function tableValue(value: number | null | undefined): string {
+  return value == null ? '–' : value.toLocaleString('de-DE')
+}
+
+function isTeamStanding(
+  participantId: number | string | null | undefined,
+  teamParticipantId: number | null,
+): boolean {
+  return participantId != null && teamParticipantId !== null && String(participantId) === String(teamParticipantId)
+}
 </script>
 
 <template>
@@ -74,57 +99,130 @@ function formatResult(match: SeasonTeamMatch): string {
   <section
     v-for="season in visibleSeasons"
     :key="season.key"
-    class="schedule-section"
-    :aria-labelledby="`schedule-${season.key}`"
+    class="season-dashboard"
+    :aria-labelledby="`season-${season.key}`"
   >
-    <div class="schedule-heading">
-      <h3 :id="`schedule-${season.key}`">{{ season.year }} – {{ season.half }}. Halbjahr</h3>
-      <span>{{ (teamMatchesBySeason[season.key] ?? []).length }} Begegnungen</span>
-    </div>
+    <header class="season-dashboard-heading">
+      <h3 :id="`season-${season.key}`">{{ season.year }} – {{ season.half }}. Halbjahr</h3>
+    </header>
 
-    <p v-if="loading[season.key]" class="schedule-message" role="status">
-      Spielplan wird geladen …
-    </p>
-    <p v-else-if="errors[season.key]" class="schedule-message schedule-error" role="alert">
-      Spielplan konnte nicht geladen werden: {{ errors[season.key] }}
-    </p>
-    <p
-      v-else-if="!teamMatchesBySeason[season.key]?.length"
-      class="schedule-message"
-      role="status"
-    >
-      Für dieses Halbjahr sind keine Begegnungen verfügbar.
-    </p>
+    <div class="season-dashboard-grid">
+      <section class="dashboard-panel schedule-panel" :aria-labelledby="`schedule-${season.key}`">
+        <div class="panel-heading">
+          <h4 :id="`schedule-${season.key}`">Mannschaftsspielplan</h4>
+          <span>{{ (teamMatchesBySeason[season.key] ?? []).length }} Begegnungen</span>
+        </div>
 
-    <div v-else class="table-scroll">
-      <table>
-        <thead>
-          <tr>
-            <th scope="col">Datum</th>
-            <th scope="col">Heimmannschaft</th>
-            <th scope="col">Gastmannschaft</th>
-            <th scope="col">Ergebnis</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="match in sortedMatchesBySeason[season.key]" :key="match.matchId">
-            <td>{{ formatDate(match.datePlanned) }}</td>
-            <td>{{ match.participantHome.displayName ?? '–' }}</td>
-            <td>{{ match.participantGuest.displayName ?? '–' }}</td>
-            <td>
-              <span :class="match.statusCd === 'FINISH' ? 'match-result' : 'match-open'">
-                {{ formatResult(match) }}
-              </span>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+        <p v-if="loading[season.key]" class="schedule-message" role="status">
+          Spielplan wird geladen …
+        </p>
+        <p v-else-if="errors[season.key]" class="schedule-message schedule-error" role="alert">
+          Spielplan konnte nicht geladen werden: {{ errors[season.key] }}
+        </p>
+        <p
+          v-else-if="!teamMatchesBySeason[season.key]?.length"
+          class="schedule-message"
+          role="status"
+        >
+          Für dieses Halbjahr sind keine Begegnungen verfügbar.
+        </p>
+
+        <div v-else class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Datum</th>
+                <th scope="col">Heimmannschaft</th>
+                <th scope="col">Gastmannschaft</th>
+                <th scope="col">Ergebnis</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="match in sortedMatchesBySeason[season.key]"
+                :key="match.matchId"
+                :class="{ 'team-match-row': isTeam(match.participantHome.displayName) || isTeam(match.participantGuest.displayName) }"
+              >
+                <td>{{ formatDate(match.datePlanned) }}</td>
+                <td :class="{ 'team-name': isTeam(match.participantHome.displayName) }">
+                  {{ match.participantHome.displayName ?? '–' }}
+                </td>
+                <td :class="{ 'team-name': isTeam(match.participantGuest.displayName) }">
+                  {{ match.participantGuest.displayName ?? '–' }}
+                </td>
+                <td>
+                  <span :class="match.statusCd === 'FINISH' ? 'match-result' : 'match-open'">
+                    {{ formatResult(match) }}
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="dashboard-panel ranking-panel" :aria-labelledby="`ranking-${season.key}`">
+        <div class="panel-heading">
+          <h4 :id="`ranking-${season.key}`">Mannschaftsrangliste</h4>
+        </div>
+
+        <p v-if="standingsLoading[season.key]" class="schedule-message" role="status">
+          Rangliste wird geladen …
+        </p>
+        <p v-else-if="standingsErrors[season.key]" class="schedule-message schedule-error" role="alert">
+          Rangliste konnte nicht geladen werden: {{ standingsErrors[season.key] }}
+        </p>
+        <p
+          v-else-if="!standingsBySeason[season.key]?.length"
+          class="schedule-message"
+          role="status"
+        >
+          Für dieses Halbjahr sind keine Ranglistendaten verfügbar.
+        </p>
+
+        <div v-else class="ranking-table-scroll">
+          <table class="ranking-table">
+            <thead>
+              <tr>
+                <th scope="col">Platz</th>
+                <th scope="col">Mannschaft</th>
+                <th scope="col">Spiele</th>
+                <th scope="col">Siege</th>
+                <th scope="col">Niederlagen</th>
+                <th scope="col">Punkte</th>
+                <th scope="col">Sets</th>
+                <th scope="col">Set-Diff.</th>
+                <th scope="col">Legs</th>
+                <th scope="col">Leg-Diff.</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="row in standingsBySeason[season.key]"
+                :key="`${row.placement}-${row.participantName}`"
+                :class="{ 'team-standing-row': isTeamStanding(row.participantId, season.participantId) }"
+              >
+                <td>{{ tableValue(row.placement) }}</td>
+                <td>{{ row.participantName ?? '–' }}</td>
+                <td>{{ tableValue(row.matchCount) }}</td>
+                <td>{{ tableValue(row.win) }}</td>
+                <td>{{ tableValue(row.lost) }}</td>
+                <td>{{ tableValue(row.points1) }}</td>
+                <td>{{ tableValue(row.sets1) }} : {{ tableValue(row.sets2) }}</td>
+                <td>{{ tableValue(row.setDifference) }}</td>
+                <td>{{ tableValue(row.legs1) }} : {{ tableValue(row.legs2) }}</td>
+                <td>{{ tableValue(row.legDifference) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
     </div>
   </section>
 </template>
 
 <style scoped>
-.schedule-section {
+.season-dashboard {
   margin-top: 18px;
   padding: 22px;
   border: 1px solid #273640;
@@ -132,7 +230,33 @@ function formatResult(match: SeasonTeamMatch): string {
   background: #0e161f;
 }
 
-.schedule-heading {
+.season-dashboard-heading {
+  margin-bottom: 16px;
+}
+
+.season-dashboard-heading h3 {
+  margin: 0;
+  color: #eaf1f5;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.season-dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 16px;
+}
+
+.dashboard-panel {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid #273640;
+  border-radius: 11px;
+  background: #111b25;
+}
+
+.panel-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -140,14 +264,36 @@ function formatResult(match: SeasonTeamMatch): string {
   margin-bottom: 14px;
 }
 
-.schedule-heading h3 {
+.panel-heading h4 {
   margin: 0;
   color: #eaf1f5;
-  font-size: 17px;
+  font-size: 15px;
   font-weight: 600;
 }
 
-.schedule-heading span,
+.panel-heading > span {
+  color: #82919e;
+  font-size: 12px;
+}
+
+.ranking-table-scroll {
+  overflow-x: auto;
+}
+
+.ranking-table {
+  min-width: 760px;
+  font-size: 11px;
+}
+
+.team-standing-row {
+  background: #123033;
+}
+
+.team-standing-row td {
+  border-bottom-color: #245052;
+}
+
+.schedule-panel .panel-heading span,
 .schedule-message {
   color: #95a3af;
   font-size: 12px;
@@ -191,6 +337,24 @@ tbody tr:last-child td {
   border-bottom: 0;
 }
 
+.team-match-row {
+  background: #11252a;
+}
+
+.team-match-row td {
+  border-bottom-color: #24434a;
+}
+
+.team-name {
+  color: #eaf1f5;
+  font-weight: 700;
+}
+
+.team-match-row .match-result,
+.team-match-row .match-open {
+  font-weight: 800;
+}
+
 .match-result {
   color: #eaf1f5;
   font-variant-numeric: tabular-nums;
@@ -202,14 +366,24 @@ tbody tr:last-child td {
 }
 
 @media (max-width: 760px) {
-  .schedule-section {
+  .season-dashboard {
     padding: 16px;
   }
 
-  .schedule-heading {
+  .season-dashboard-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .panel-heading {
     align-items: flex-start;
     flex-direction: column;
     gap: 6px;
+  }
+}
+
+@media (max-width: 1100px) {
+  .season-dashboard-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 </style>
