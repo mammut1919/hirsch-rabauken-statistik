@@ -15,7 +15,7 @@ export const usePlayerRosterStore = defineStore('playerRoster', () => {
     loading.value[season.key] = true
     delete errors.value[season.key]
     try {
-      const response = await fetchSeasonParticipant(season.participantId)
+      const response = await fetchSeasonParticipant(season.participantId, season.eventId ?? 39389)
       rosters.value[season.key] = normalizeSeasonRoster(response)
     } catch (error) {
       errors.value[season.key] =

@@ -28,7 +28,14 @@ import { useSeasonStore } from '../stores/season'
 const matchReportsStore = useMatchReportsStore()
 const rosterStore = usePlayerRosterStore()
 const seasonStore = useSeasonStore()
-const { reports, loadedReportCount } = storeToRefs(matchReportsStore)
+const {
+  reportsBySeason,
+  matchIdsBySeason,
+  loadingBySeason: reportLoadingBySeason,
+  loadErrorsBySeason: reportErrorsBySeason,
+  loadedReportCounts,
+  completedReportCounts,
+} = storeToRefs(matchReportsStore)
 const { rosters, loading: rosterLoading, errors: rosterErrors } = storeToRefs(rosterStore)
 const { selectedSeason, selectedSeasonLabel } = storeToRefs(seasonStore)
 const showLegs = ref(false)
@@ -48,6 +55,7 @@ watch(
   () => {
     selectedPairPlayerId.value = ''
     void rosterStore.loadRosters(selectedSeasonConfigs.value)
+    void matchReportsStore.loadReports(selectedSeasonConfigs.value)
   },
   { immediate: true },
 )
@@ -61,16 +69,36 @@ const visibleRosters = computed(() =>
 )
 
 const reportSets = computed(() => {
-  const includesH1 = selectedSeason.value === 'all' || selectedSeason.value === '2026-1'
-  if (!includesH1 || loadedReportCount.value === 0) return []
-  return [
-    {
-      seasonKey: '2026-1',
-      reports: Object.values(reports.value).flatMap((report) =>
-        Array.isArray(report) ? report : [],
-      ),
-    },
-  ]
+  return selectedSeasonConfigs.value.flatMap(({ key }) => {
+    const reports = reportsBySeason.value[key]
+    if (!reports || !(loadedReportCounts.value[key] ?? 0)) return []
+    return [{
+      seasonKey: key,
+      reports: Object.values(reports).flatMap((report) => Array.isArray(report) ? report : []),
+    }]
+  })
+})
+
+const selectedLoadedReportCount = computed(() =>
+  selectedSeasonConfigs.value.reduce(
+    (total, { key }) => total + (loadedReportCounts.value[key] ?? 0),
+    0,
+  ),
+)
+const relevantReportsLoading = computed(() =>
+  selectedSeasonConfigs.value.some(({ key }) => reportLoadingBySeason.value[key]),
+)
+const reportProgressPercent = computed(() => {
+  const total = selectedSeasonConfigs.value.reduce(
+    (sum, { key }) => sum + (matchIdsBySeason.value[key]?.length ?? 0),
+    0,
+  )
+  if (total === 0) return 0
+  const completed = selectedSeasonConfigs.value.reduce(
+    (sum, { key }) => sum + (completedReportCounts.value[key] ?? 0),
+    0,
+  )
+  return Math.floor((completed / total) * 100)
 })
 
 const statistics = computed(() => calculatePlayerStatistics(visibleRosters.value, reportSets.value))
@@ -115,21 +143,19 @@ const sortedPairs = computed(() =>
     ...pair,
   })),
 )
-const hasH1Reports = computed(() => reportSets.value.length > 0)
+const hasReports = computed(() => reportSets.value.length > 0)
 const hasRosterForReports = computed(() =>
   reportSets.value.every(({ seasonKey }) => Boolean(visibleRosters.value[seasonKey])),
 )
 const relevantRostersLoading = computed(() =>
   selectedSeasonConfigs.value.some(({ key }) => rosterLoading.value[key]),
 )
-const relevantRosterErrors = computed(() =>
-  selectedSeasonConfigs.value
-    .map(({ key, label }) =>
-      rosterErrors.value[key] ? `${label}: ${rosterErrors.value[key]}` : null,
-    )
-    .filter((error): error is string => error !== null),
+const relevantErrors = computed(() =>
+  selectedSeasonConfigs.value.flatMap(({ key, label }) => [
+    rosterErrors.value[key] ? `${label} Kader: ${rosterErrors.value[key]}` : null,
+    reportErrorsBySeason.value[key] ? `${label} Reports: ${reportErrorsBySeason.value[key]}` : null,
+  ]).filter((error): error is string => error !== null),
 )
-const hasOnlyH1Reports = computed(() => selectedSeason.value === 'all' && hasH1Reports.value)
 
 function percentage(summary: PlayerGameSummary): string {
   return summary.winPercentage === null
@@ -163,52 +189,38 @@ function playerKey(player: PlayerStatisticsRow): string {
       <h2>Spielerstatistik</h2>
     </div>
     <Tag
-      :value="`${loadedReportCount} Matchreports im Cache`"
-      :severity="hasH1Reports ? 'success' : 'secondary'"
+      :value="`${selectedLoadedReportCount} Matchreports im Cache`"
+      :severity="hasReports ? 'success' : 'secondary'"
     />
   </div>
 
   <Message
-    v-if="relevantRosterErrors.length"
+    v-if="relevantErrors.length"
     severity="error"
     :closable="false"
     class="cache-message"
   >
     <ul class="message-list">
-      <li v-for="error in relevantRosterErrors" :key="error">{{ error }}</li>
+      <li v-for="error in relevantErrors" :key="error">{{ error }}</li>
     </ul>
   </Message>
 
-  <Message v-if="hasOnlyH1Reports" severity="warn" :closable="false" class="cache-message">
-    Gesamt umfasst aktuell die geladenen H1-2026-Matchreports. Für H2-2026 liegen in diesem
-    Arbeitsspeicher-Store noch keine Matchreports vor.
-  </Message>
-
-  <Message
-    v-else-if="selectedSeason === '2026-2'"
-    severity="info"
-    :closable="false"
-    class="cache-message"
-  >
-    Für H2 2026 ist der offizielle Mannschaftskader verfügbar, aber der bestehende Matchreport-Store
-    enthält derzeit nur H1-2026-Reports. Deshalb werden für H2 keine Spielzahlen als null oder
-    ungespielt ausgegeben.
-  </Message>
-
-  <Message v-else-if="!hasH1Reports" severity="info" :closable="false" class="cache-message">
+  <Message v-else-if="!hasReports && !relevantReportsLoading" severity="info" :closable="false" class="cache-message">
     <div>
-      <strong>Keine passenden Matchreports im Arbeitsspeicher.</strong>
+      <strong>Für die ausgewählte Saison sind noch keine Matchreports verfügbar.</strong>
       <p>
-        Öffne den <RouterLink to="/matchreport-test">Datenlade-Test</RouterLink>, um H1-2026-Reports
-        zu laden. Die Reports bleiben nur bis zum Neuladen oder Schließen der Anwendung im
-        Pinia-Cache.
+        Die Reports der ausgewählten Saison werden automatisch geladen und bleiben bis zum Neuladen
+        oder Schließen der Anwendung im Pinia-Cache.
       </p>
     </div>
   </Message>
 
-  <div v-if="relevantRostersLoading" class="loading-note" role="status">
+  <div v-if="relevantRostersLoading || relevantReportsLoading" class="loading-note" role="status">
     <i class="pi pi-spin pi-spinner" aria-hidden="true" />
-    <span>Offizielle Teilnehmerlisten werden geladen.</span>
+    <span>
+      <template v-if="relevantRostersLoading">Offizielle Teilnehmerlisten werden geladen.</template>
+      <template v-else>Matchreports werden geladen ({{ reportProgressPercent }} %).</template>
+    </span>
   </div>
 
   <section class="statistics-section player-statistics" aria-labelledby="player-heading">
@@ -223,7 +235,7 @@ function playerKey(player: PlayerStatisticsRow): string {
       </div>
     </div>
 
-    <template v-if="hasH1Reports && hasRosterForReports && !relevantRostersLoading">
+    <template v-if="hasReports && hasRosterForReports && !relevantRostersLoading">
       <div class="stats-grid">
         <section class="stats-kind" aria-labelledby="singles-heading">
           <div class="kind-heading">
@@ -347,7 +359,7 @@ function playerKey(player: PlayerStatisticsRow): string {
       <Tag :value="`${sortedPairs.length} Paarungen`" severity="success" />
     </div>
 
-    <template v-if="hasH1Reports && hasRosterForReports && !relevantRostersLoading">
+    <template v-if="hasReports && hasRosterForReports && !relevantRostersLoading">
       <div class="pair-table-controls">
         <div class="table-controls">
           <label for="pair-player-filter">Spieler</label>

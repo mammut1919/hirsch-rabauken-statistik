@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
-import { getAvailableSeasons } from '../services/seasonConfig'
+import { getAvailableSeasons, type SeasonConfig } from '../services/seasonConfig'
 import { getTeamMatchIds } from '../services/teamMatches'
 import {
   fetchMatchReportWithMetadata,
@@ -15,6 +15,7 @@ const REPORT_CONCURRENCY = 1
 const ROUND_CONCURRENCY = 4
 const MAX_REPORT_ATTEMPTS = 3
 const REPORT_REQUEST_PAUSE_MS = 500
+const H1_SEASON_KEY = '2026-1'
 
 export interface ReportAttemptRecord {
   matchId: number
@@ -51,49 +52,100 @@ function positiveId(value: unknown): number | null {
 }
 
 export const useMatchReportsStore = defineStore('matchReports', () => {
-  const season = getAvailableSeasons().find(({ key }) => key === '2026-1')
-  const eventId = season?.eventId ?? null
-  const phaseId = season?.phaseId ?? null
-  const participantId = season?.participantId ?? null
+  const defaultSeason = getAvailableSeasons().find(({ key }) => key === H1_SEASON_KEY)
+  const eventId = defaultSeason?.eventId ?? null
+  const phaseId = defaultSeason?.phaseId ?? null
 
-  // Raw report responses stay in this in-memory Pinia state; no persistence plugin is used.
-  const reports = ref<Record<number, unknown>>({})
-  const matchIds = ref<number[]>([])
-  const failedReports = ref<Record<number, ReportAttemptRecord>>({})
-  const attemptCounts = ref<Record<number, number>>({})
-  const attemptLog = ref<ReportAttemptRecord[]>([])
-  const roundErrors = ref<string[]>([])
-  const loading = ref(false)
-  const loadError = ref('')
-  const roundCount = ref(0)
-  const completedRounds = ref(0)
+  // Each season owns an independent report cache and request state, even if match IDs overlap.
+  const reportsBySeason = ref<Record<string, Record<number, unknown>>>({})
+  const matchIdsBySeason = ref<Record<string, number[]>>({})
+  const failedReportsBySeason = ref<Record<string, Record<number, ReportAttemptRecord>>>({})
+  const attemptCountsBySeason = ref<Record<string, Record<number, number>>>({})
+  const attemptLogsBySeason = ref<Record<string, ReportAttemptRecord[]>>({})
+  const roundErrorsBySeason = ref<Record<string, string[]>>({})
+  const loadErrorsBySeason = ref<Record<string, string>>({})
+  const loadingBySeason = ref<Record<string, boolean>>({})
+  const roundCountsBySeason = ref<Record<string, number>>({})
+  const completedRoundsBySeason = ref<Record<string, number>>({})
 
-  const loadedReportCount = computed(
-    () => matchIds.value.filter((id) => id in reports.value).length,
+  function ensureSeasonState(seasonKey: string): void {
+    reportsBySeason.value[seasonKey] ??= {}
+    matchIdsBySeason.value[seasonKey] ??= []
+    failedReportsBySeason.value[seasonKey] ??= {}
+    attemptCountsBySeason.value[seasonKey] ??= {}
+    attemptLogsBySeason.value[seasonKey] ??= []
+    roundErrorsBySeason.value[seasonKey] ??= []
+    loadingBySeason.value[seasonKey] ??= false
+    roundCountsBySeason.value[seasonKey] ??= 0
+    completedRoundsBySeason.value[seasonKey] ??= 0
+  }
+
+  const loadedReportCounts = computed(() =>
+    Object.fromEntries(
+      Object.entries(matchIdsBySeason.value).map(([seasonKey, matchIds]) => [
+        seasonKey,
+        matchIds.filter((id) => id in (reportsBySeason.value[seasonKey] ?? {})).length,
+      ]),
+    ),
   )
-  const failedReportCount = computed(
-    () => matchIds.value.filter((id) => id in failedReports.value).length,
+  const failedReportCounts = computed(() =>
+    Object.fromEntries(
+      Object.entries(matchIdsBySeason.value).map(([seasonKey, matchIds]) => [
+        seasonKey,
+        matchIds.filter((id) => id in (failedReportsBySeason.value[seasonKey] ?? {})).length,
+      ]),
+    ),
   )
-  const completedReportCount = computed(() => loadedReportCount.value + failedReportCount.value)
-  const progressPercent = computed(() =>
-    matchIds.value.length === 0
-      ? 0
-      : Math.floor((completedReportCount.value / matchIds.value.length) * 100),
+  const completedReportCounts = computed(() =>
+    Object.fromEntries(
+      Object.keys(matchIdsBySeason.value).map((seasonKey) => [
+        seasonKey,
+        (loadedReportCounts.value[seasonKey] ?? 0) + (failedReportCounts.value[seasonKey] ?? 0),
+      ]),
+    ),
   )
+  const progressPercentsBySeason = computed(() =>
+    Object.fromEntries(
+      Object.entries(matchIdsBySeason.value).map(([seasonKey, matchIds]) => [
+        seasonKey,
+        matchIds.length === 0
+          ? 0
+          : Math.floor(((completedReportCounts.value[seasonKey] ?? 0) / matchIds.length) * 100),
+      ]),
+    ),
+  )
+
+  // H1 aliases preserve the existing diagnostic view and its controls.
+  const reports = computed(() => reportsBySeason.value[H1_SEASON_KEY] ?? {})
+  const matchIds = computed(() => matchIdsBySeason.value[H1_SEASON_KEY] ?? [])
+  const failedReports = computed(() => failedReportsBySeason.value[H1_SEASON_KEY] ?? {})
+  const attemptCounts = computed(() => attemptCountsBySeason.value[H1_SEASON_KEY] ?? {})
+  const attemptLog = computed(() => attemptLogsBySeason.value[H1_SEASON_KEY] ?? [])
+  const roundErrors = computed(() => roundErrorsBySeason.value[H1_SEASON_KEY] ?? [])
+  const loading = computed(() => Object.values(loadingBySeason.value).some(Boolean))
+  const loadError = computed(() => loadErrorsBySeason.value[H1_SEASON_KEY] ?? '')
+  const roundCount = computed(() => roundCountsBySeason.value[H1_SEASON_KEY] ?? 0)
+  const completedRounds = computed(() => completedRoundsBySeason.value[H1_SEASON_KEY] ?? 0)
+  const loadedReportCount = computed(() => loadedReportCounts.value[H1_SEASON_KEY] ?? 0)
+  const failedReportCount = computed(() => failedReportCounts.value[H1_SEASON_KEY] ?? 0)
+  const completedReportCount = computed(() => completedReportCounts.value[H1_SEASON_KEY] ?? 0)
+  const progressPercent = computed(() => progressPercentsBySeason.value[H1_SEASON_KEY] ?? 0)
   const cachedReportCount = computed(() => Object.keys(reports.value).length)
   const requestAttemptCount = computed(() => attemptLog.value.length)
 
-  async function requestReport(matchId: number): Promise<void> {
+  async function requestReport(season: SeasonConfig, matchId: number): Promise<void> {
+    const seasonKey = season.key
+    ensureSeasonState(seasonKey)
     for (let localAttempt = 1; localAttempt <= MAX_REPORT_ATTEMPTS; localAttempt += 1) {
-      const attemptNumber = (attemptCounts.value[matchId] ?? 0) + 1
-      attemptCounts.value[matchId] = attemptNumber
+      const attemptNumber = (attemptCountsBySeason.value[seasonKey]![matchId] ?? 0) + 1
+      attemptCountsBySeason.value[seasonKey]![matchId] = attemptNumber
       const attemptedAt = new Date().toISOString()
 
       try {
-        const response = await fetchMatchReportWithMetadata(eventId!, matchId)
-        reports.value[matchId] = response.data
-        delete failedReports.value[matchId]
-        attemptLog.value.push({
+        const response = await fetchMatchReportWithMetadata(season.eventId!, matchId)
+        reportsBySeason.value[seasonKey]![matchId] = response.data
+        delete failedReportsBySeason.value[seasonKey]![matchId]
+        attemptLogsBySeason.value[seasonKey]!.push({
           matchId,
           attemptedAt,
           attemptNumber,
@@ -121,8 +173,8 @@ export const useMatchReportsStore = defineStore('matchReports', () => {
                 : 'Unbekannter Fehler',
           errorMessage: error instanceof Error ? error.message : 'Unbekannter Fehler.',
         }
-        failedReports.value[matchId] = record
-        attemptLog.value.push(record)
+        failedReportsBySeason.value[seasonKey]![matchId] = record
+        attemptLogsBySeason.value[seasonKey]!.push(record)
       }
 
       if (localAttempt < MAX_REPORT_ATTEMPTS) {
@@ -131,22 +183,23 @@ export const useMatchReportsStore = defineStore('matchReports', () => {
     }
   }
 
-  async function loadReports(): Promise<void> {
-    if (loading.value) return
-    if (eventId === null || phaseId === null || participantId === null) {
-      loadError.value = 'Für H1 2026 sind keine Event- und Phase-IDs konfiguriert.'
+  async function loadSeasonReports(season: SeasonConfig): Promise<void> {
+    ensureSeasonState(season.key)
+    if (loadingBySeason.value[season.key]) return
+    if (season.eventId === null || season.phaseId === null || season.participantId === null) {
+      loadErrorsBySeason.value[season.key] = `F\u00fcr ${season.label} fehlen Event-, Phase- oder Teilnehmer-ID.`
       return
     }
 
-    loading.value = true
-    loadError.value = ''
-    roundErrors.value = []
-    failedReports.value = {}
-    roundCount.value = 0
-    completedRounds.value = 0
+    loadingBySeason.value[season.key] = true
+    loadErrorsBySeason.value[season.key] = ''
+    roundErrorsBySeason.value[season.key] = []
+    failedReportsBySeason.value[season.key] = {}
+    roundCountsBySeason.value[season.key] = 0
+    completedRoundsBySeason.value[season.key] = 0
 
     try {
-      const phase = await fetchSeasonPhase(eventId, phaseId)
+      const phase = await fetchSeasonPhase(season.eventId, season.phaseId)
       const rounds = Array.isArray(phase.rounds) ? phase.rounds : []
       const roundIds = [...new Set(
         rounds
@@ -155,76 +208,97 @@ export const useMatchReportsStore = defineStore('matchReports', () => {
       )]
 
       if (roundIds.length === 0) {
-        throw new Error('Die Phasenantwort enthält keine gültigen Runden-IDs.')
+        throw new Error('Die Phasenantwort enth\u00e4lt keine g\u00fcltigen Runden-IDs.')
       }
 
-      roundCount.value = roundIds.length
+      roundCountsBySeason.value[season.key] = roundIds.length
       const allMatchIds = new Set<number>()
 
       await forEachConcurrent(roundIds, ROUND_CONCURRENCY, async (roundId) => {
         try {
-          const round: ThreeKDartsRound = await fetchSeasonRound(eventId, phaseId, roundId)
-          for (const matchId of getTeamMatchIds(round, participantId)) allMatchIds.add(matchId)
+          const round: ThreeKDartsRound = await fetchSeasonRound(
+            season.eventId!,
+            season.phaseId!,
+            roundId,
+          )
+          for (const matchId of getTeamMatchIds(round, season.participantId!)) {
+            allMatchIds.add(matchId)
+          }
         } catch (error) {
-          roundErrors.value.push(
+          roundErrorsBySeason.value[season.key]!.push(
             `Runde ${roundId}: ${error instanceof Error ? error.message : 'Unbekannter Fehler.'}`,
           )
         } finally {
-          completedRounds.value += 1
+          completedRoundsBySeason.value[season.key] =
+            (completedRoundsBySeason.value[season.key] ?? 0) + 1
         }
       })
 
-      matchIds.value = [...allMatchIds].sort((a, b) => a - b)
-      if (matchIds.value.length === 0) {
+      matchIdsBySeason.value[season.key] = [...allMatchIds].sort((a, b) => a - b)
+      if (matchIdsBySeason.value[season.key]!.length === 0) {
         throw new Error('Aus den Rundendaten konnten keine Match-IDs ermittelt werden.')
       }
 
-      const uncachedIds = matchIds.value.filter((id) => !(id in reports.value))
+      const uncachedIds = matchIdsBySeason.value[season.key]!.filter(
+        (id) => !(id in reportsBySeason.value[season.key]!),
+      )
       await forEachConcurrent(uncachedIds, REPORT_CONCURRENCY, async (matchId, index) => {
-        await requestReport(matchId)
+        await requestReport(season, matchId)
         if (index < uncachedIds.length - 1) {
           await new Promise((resolve) => globalThis.setTimeout(resolve, REPORT_REQUEST_PAUSE_MS))
         }
       })
     } catch (error) {
-      loadError.value = error instanceof Error ? error.message : 'Unbekannter Ladefehler.'
+      loadErrorsBySeason.value[season.key] =
+        error instanceof Error ? error.message : 'Unbekannter Ladefehler.'
     } finally {
-      loading.value = false
+      loadingBySeason.value[season.key] = false
+    }
+  }
+
+  async function loadReports(seasons: SeasonConfig | SeasonConfig[] = defaultSeason ?? []): Promise<void> {
+    const requestedSeasons = Array.isArray(seasons) ? seasons : [seasons]
+    const uniqueSeasons = [...new Map(requestedSeasons.map((season) => [season.key, season])).values()]
+    for (const season of uniqueSeasons) {
+      if (season.eventId === null || season.phaseId === null || season.participantId === null) continue
+      await loadSeasonReports(season)
     }
   }
 
   function clearCache(): void {
-    reports.value = {}
-    matchIds.value = []
-    failedReports.value = {}
-    attemptCounts.value = {}
-    attemptLog.value = []
-    roundErrors.value = []
-    loadError.value = ''
-    roundCount.value = 0
-    completedRounds.value = 0
+    reportsBySeason.value = {}
+    matchIdsBySeason.value = {}
+    failedReportsBySeason.value = {}
+    attemptCountsBySeason.value = {}
+    attemptLogsBySeason.value = {}
+    roundErrorsBySeason.value = {}
+    loadErrorsBySeason.value = {}
+    loadingBySeason.value = {}
+    roundCountsBySeason.value = {}
+    completedRoundsBySeason.value = {}
   }
 
   async function runReportDiagnostics(failedMatchIds: number[], controlMatchId: number): Promise<void> {
-    if (loading.value || eventId === null) return
-
-    loading.value = true
-    loadError.value = ''
-    roundErrors.value = []
-    attemptLog.value = []
-    failedReports.value = {}
+    const season = defaultSeason
+    if (!season || loading.value) return
+    ensureSeasonState(season.key)
+    loadingBySeason.value[season.key] = true
+    loadErrorsBySeason.value[season.key] = ''
+    roundErrorsBySeason.value[season.key] = []
+    attemptLogsBySeason.value[season.key] = []
+    failedReportsBySeason.value[season.key] = {}
     const diagnosticIds = [...new Set([...failedMatchIds, controlMatchId])]
-    matchIds.value = diagnosticIds
+    matchIdsBySeason.value[season.key] = diagnosticIds
 
     try {
       for (const [index, matchId] of diagnosticIds.entries()) {
-        await requestReport(matchId)
+        await requestReport(season, matchId)
         if (index < diagnosticIds.length - 1) {
           await new Promise((resolve) => globalThis.setTimeout(resolve, REPORT_REQUEST_PAUSE_MS))
         }
       }
     } finally {
-      loading.value = false
+      loadingBySeason.value[season.key] = false
     }
   }
 
@@ -253,6 +327,20 @@ export const useMatchReportsStore = defineStore('matchReports', () => {
     progressPercent,
     cachedReportCount,
     requestAttemptCount,
+    reportsBySeason,
+    matchIdsBySeason,
+    failedReportsBySeason,
+    attemptCountsBySeason,
+    attemptLogsBySeason,
+    roundErrorsBySeason,
+    loadErrorsBySeason,
+    loadingBySeason,
+    roundCountsBySeason,
+    completedRoundsBySeason,
+    loadedReportCounts,
+    failedReportCounts,
+    completedReportCounts,
+    progressPercentsBySeason,
     loadReports,
     runReportDiagnostics,
     clearCache,

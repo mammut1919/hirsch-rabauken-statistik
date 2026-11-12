@@ -118,4 +118,33 @@ describe('player roster and player game statistics', () => {
       count: 1,
     })
   })
+
+  it('merges H1 and H2 player rows by stable ID and keeps H1-only players', () => {
+    const h1Roster: SeasonRosterPlayer[] = [
+      { playerId: 'stable-ada', displayName: 'Ada A', firstname: 'Ada', passNr: null },
+      { playerId: 'h1-fabian', displayName: 'Fabian Böttcher', firstname: 'Fabian', passNr: null },
+    ]
+    const h2Roster: SeasonRosterPlayer[] = [
+      { playerId: 'stable-ada', displayName: 'Ada A', firstname: 'Ada', passNr: null },
+      { playerId: 'h2-only', displayName: 'Alexandra A', firstname: 'Alexandra', passNr: null },
+    ]
+    const result = calculatePlayerStatistics(
+      { '2026-1': h1Roster, '2026-2': h2Roster },
+      [
+        {
+          seasonKey: '2026-1',
+          reports: [entry('DP', 'FINISH', 'Ada A & Fabian Böttcher', 'Opponent A & Opponent B', 2, 1)],
+        },
+        {
+          seasonKey: '2026-2',
+          reports: [entry('DP', 'FINISH', 'Ada A & Alexandra A', 'Opponent C & Opponent D', 1, 2)],
+        },
+      ],
+    )
+
+    expect(result.players.find(({ playerId }) => playerId === 'stable-ada')?.doubles.played).toBe(2)
+    expect(result.players.find(({ playerId }) => playerId === 'h1-fabian')?.doubles.played).toBe(1)
+    expect(result.players.find(({ playerId }) => playerId === 'h2-only')?.doubles.played).toBe(1)
+    expect(result.players).toHaveLength(3)
+  })
 })

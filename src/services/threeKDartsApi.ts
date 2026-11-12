@@ -35,8 +35,30 @@ export interface ThreeKDartsRound {
   }>
 }
 
-export function fetchSeasonParticipant(participantId: number): Promise<unknown> {
-  return fetchJson(`${dsabApiBaseUrl}/frontend/participant/${participantId}`)
+export function getSeasonParticipantUrl(eventId: number, participantId: number): string {
+  if (eventId === 40293) {
+    return `${dsabApiBaseUrl}/frontend/events/9/event/${eventId}/participants/${participantId}`
+  }
+  return `${dsabApiBaseUrl}/frontend/participant/${participantId}`
+}
+
+export async function fetchSeasonParticipant(
+  participantId: number,
+  eventId = 39389,
+  fetcher: typeof fetch = fetch,
+): Promise<unknown> {
+  try {
+    return await fetchJson(getSeasonParticipantUrl(eventId, participantId), fetcher)
+  } catch (error) {
+    if (
+      eventId !== 40293 ||
+      !(error instanceof ThreeKDartsApiError) ||
+      error.httpStatus !== 404
+    ) {
+      throw error
+    }
+    return fetchJson(`${dsabApiBaseUrl}/frontend/participant/${participantId}`, fetcher)
+  }
 }
 
 export interface SeasonRequestUrls {
