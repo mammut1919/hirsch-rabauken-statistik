@@ -29,7 +29,7 @@ export function getAvailableSeasons(now = new Date()): SeasonConfig[] {
         half,
         label: `${year} · ${half}. Halbjahr`,
         eventId: year === 2026 ? (half === 1 ? 39389 : 40293) : null,
-        phaseId: year === 2026 && half === 1 ? 3010 : null,
+        phaseId: year === 2026 ? (half === 1 ? 3010 : 3989) : null,
         participantId: year === 2026 ? (half === 1 ? 527581 : 682469) : null,
       })
     }

@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { getAvailableSeasons } from '../services/seasonConfig'
+import { getTeamMatchIds } from '../services/teamMatches'
 import {
   fetchMatchReportWithMetadata,
   fetchSeasonPhase,
@@ -53,6 +54,7 @@ export const useMatchReportsStore = defineStore('matchReports', () => {
   const season = getAvailableSeasons().find(({ key }) => key === '2026-1')
   const eventId = season?.eventId ?? null
   const phaseId = season?.phaseId ?? null
+  const participantId = season?.participantId ?? null
 
   // Raw report responses stay in this in-memory Pinia state; no persistence plugin is used.
   const reports = ref<Record<number, unknown>>({})
@@ -131,7 +133,7 @@ export const useMatchReportsStore = defineStore('matchReports', () => {
 
   async function loadReports(): Promise<void> {
     if (loading.value) return
-    if (eventId === null || phaseId === null) {
+    if (eventId === null || phaseId === null || participantId === null) {
       loadError.value = 'Für H1 2026 sind keine Event- und Phase-IDs konfiguriert.'
       return
     }
@@ -162,11 +164,7 @@ export const useMatchReportsStore = defineStore('matchReports', () => {
       await forEachConcurrent(roundIds, ROUND_CONCURRENCY, async (roundId) => {
         try {
           const round: ThreeKDartsRound = await fetchSeasonRound(eventId, phaseId, roundId)
-          const matches = Array.isArray(round.matches) ? round.matches : []
-          for (const match of matches) {
-            const matchId = positiveId(match.id ?? match.matchId)
-            if (matchId !== null) allMatchIds.add(matchId)
-          }
+          for (const matchId of getTeamMatchIds(round, participantId)) allMatchIds.add(matchId)
         } catch (error) {
           roundErrors.value.push(
             `Runde ${roundId}: ${error instanceof Error ? error.message : 'Unbekannter Fehler.'}`,

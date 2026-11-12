@@ -27,7 +27,12 @@ export interface ThreeKDartsPhase {
 }
 
 export interface ThreeKDartsRound {
-  matches?: Array<{ id?: number; matchId?: number }>
+  matches?: Array<{
+    id?: number
+    matchId?: number
+    participantHome?: { id?: number | string }
+    participantGuest?: { id?: number | string }
+  }>
 }
 
 export function fetchSeasonParticipant(participantId: number): Promise<unknown> {
