@@ -67,3 +67,7 @@ Generative AI tools (ChatGPT and Codex by OpenAI) were used to assist with the d
 The project concept, requirements, technical decisions, and review of the results were guided and supervised by the human project maintainer.
 
 Responsibility for the maintenance, operation, and publication of this project remains with the project maintainer.
+
+## License
+
+This project is licensed under the MIT License. See the LICENSE file for details.
