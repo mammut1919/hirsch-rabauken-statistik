@@ -26,13 +26,36 @@ export interface ThreeKDartsPhase {
   rounds?: Array<{ id?: number; roundId?: number }>
 }
 
+export interface ThreeKDartsMatchParticipant {
+  id?: number | string | null
+  displayName?: string | null
+}
+
+export interface ThreeKDartsScheduleMatch {
+  id?: number | string
+  matchId?: number | string
+  datePlanned?: string | null
+  participantHome?: ThreeKDartsMatchParticipant | null
+  participantGuest?: ThreeKDartsMatchParticipant | null
+  statusCd?: string | null
+  setsHome?: number | null
+  setsAway?: number | null
+  legsHome?: number | null
+  legsAway?: number | null
+  round?: { name?: string | null } | null
+}
+
 export interface ThreeKDartsRound {
-  matches?: Array<{
-    id?: number
-    matchId?: number
-    participantHome?: { id?: number | string }
-    participantGuest?: { id?: number | string }
-  }>
+  name?: string
+  matches?: ThreeKDartsScheduleMatch[]
+}
+
+export interface ThreeKDartsParticipantResponse {
+  participant?: {
+    id?: number | string
+    teamSeason?: { teamMembers?: unknown[] | null } | null
+  } | null
+  matches?: ThreeKDartsScheduleMatch[] | null
 }
 
 export function getSeasonParticipantUrl(eventId: number, participantId: number): string {
@@ -46,9 +69,12 @@ export async function fetchSeasonParticipant(
   participantId: number,
   eventId = 39389,
   fetcher: typeof fetch = fetch,
-): Promise<unknown> {
+): Promise<ThreeKDartsParticipantResponse> {
   try {
-    return await fetchJson(getSeasonParticipantUrl(eventId, participantId), fetcher)
+    return (await fetchJson(
+      getSeasonParticipantUrl(eventId, participantId),
+      fetcher,
+    )) as ThreeKDartsParticipantResponse
   } catch (error) {
     if (
       eventId !== 40293 ||
@@ -57,7 +83,10 @@ export async function fetchSeasonParticipant(
     ) {
       throw error
     }
-    return fetchJson(`${dsabApiBaseUrl}/frontend/participant/${participantId}`, fetcher)
+    return (await fetchJson(
+      `${dsabApiBaseUrl}/frontend/participant/${participantId}`,
+      fetcher,
+    )) as ThreeKDartsParticipantResponse
   }
 }
 
