@@ -384,7 +384,16 @@ tbody tr:last-child td {
 
 @media (max-width: 760px) {
   .season-dashboard {
-    padding: 16px;
+    margin-top: 14px;
+    padding: 12px;
+  }
+
+  .season-dashboard-heading {
+    margin-bottom: 12px;
+  }
+
+  .dashboard-panel {
+    padding: 12px;
   }
 
   .season-dashboard-grid {
@@ -395,6 +404,16 @@ tbody tr:last-child td {
     align-items: flex-start;
     flex-direction: column;
     gap: 6px;
+  }
+}
+
+@media (max-width: 430px) {
+  .season-dashboard {
+    padding: 10px;
+  }
+
+  .dashboard-panel {
+    padding: 10px;
   }
 }
 

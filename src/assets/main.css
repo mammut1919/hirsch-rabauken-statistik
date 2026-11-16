@@ -40,21 +40,36 @@ button, input, select { font: inherit; }
 .empty-state p { max-width: 380px; margin: 0; color: #82919e; font-size: 13px; line-height: 1.65; }
 
 @media (max-width: 760px) {
-  .app-shell { --sidebar-width: 68px; }
-  .sidebar { align-items: center; padding: 18px 8px; }
-  .brand-mark { width: 40px; max-width: 100%; height: auto; margin: 0 auto 34px; }
-  .nav-list { width: 100%; }
-  .nav-link { justify-content: center; padding: 0; }
-  .nav-link span, .sidebar-footer { display: none; }
-  .main-area { width: calc(100% - var(--sidebar-width)); }
-  .topbar { min-height: auto; align-items: flex-start; flex-direction: column; padding: 22px 20px; }
+  .sidebar { display: none; }
+  .main-area { width: 100%; margin-left: 0; }
+  .topbar { min-height: auto; align-items: stretch; flex-direction: column; gap: 14px; padding: 16px; }
+  .mobile-heading-row { display: flex; align-items: center; gap: 12px; }
+  .mobile-menu-button { display: grid; width: 40px; height: 40px; flex: 0 0 40px; place-items: center; border: 1px solid #273640; border-radius: 9px; background: #111b25; color: #c8d5dc; font-size: 17px; cursor: pointer; }
+  .mobile-menu-button:hover, .mobile-menu-button:focus-visible { border-color: #1a5558; color: #54e0d2; }
+  .mobile-menu-backdrop { position: fixed; inset: 0; z-index: 5; border: 0; background: #02070bb3; }
+  .mobile-navigation { position: fixed; inset: 0 auto 0 0; z-index: 6; display: flex; width: min(280px, 82vw); flex-direction: column; padding: 22px 16px; border-right: 1px solid #1c2833; background: #0e151e; box-shadow: 12px 0 32px #0006; }
+  .mobile-brand-mark { display: block; width: 100%; max-width: 210px; height: auto; margin: 0 auto 28px; object-fit: contain; }
+  .mobile-navigation .nav-link { min-height: 44px; }
   .season-control { width: 100%; justify-content: space-between; }
-  .season-control .p-select { flex: 1; max-width: 230px; }
-  .page-content { padding: 28px 20px 48px; }
+  .season-control { min-width: 0; gap: 10px; }
+  .season-control .p-select { flex: 1; min-width: 0; max-width: 230px; }
+  .page-content { padding: 20px 16px 40px; }
 }
 
 @media (max-width: 430px) {
-  .season-control { align-items: flex-start; flex-direction: column; gap: 8px; }
-  .season-control .p-select { width: 100%; max-width: none; }
-  .empty-state { min-height: 280px; padding: 24px; }
+  .topbar { gap: 10px; padding: 12px; }
+  .mobile-heading-row { gap: 9px; }
+  .mobile-menu-button { width: 36px; height: 36px; flex-basis: 36px; }
+  .topbar h1 { font-size: 18px; }
+  .eyebrow { margin-bottom: 5px; }
+  .season-control { align-items: center; flex-direction: row; gap: 8px; }
+  .season-control label { font-size: 12px; }
+  .season-control .p-select { width: auto; min-width: 0; max-width: none; }
+  .page-content { padding: 16px 12px 32px; }
+  .empty-state { min-height: 280px; padding: 20px; }
+}
+
+@media (min-width: 761px) {
+  .mobile-heading-row { display: block; }
+  .mobile-menu-button, .mobile-menu-backdrop, .mobile-navigation { display: none; }
 }

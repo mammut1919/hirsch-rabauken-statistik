@@ -909,6 +909,18 @@ tbody tr:last-child td {
   line-height: 1.65;
 }
 @media (max-width: 760px) {
+  .statistics-section {
+    padding: 16px;
+  }
+
+  .stats-grid {
+    gap: 14px;
+  }
+
+  .stats-kind {
+    padding: 12px;
+  }
+
   .view-heading {
     align-items: flex-start;
     flex-direction: column;
@@ -916,6 +928,16 @@ tbody tr:last-child td {
   .section-heading {
     align-items: flex-start;
     flex-direction: column;
+  }
+}
+
+@media (max-width: 430px) {
+  .statistics-section {
+    padding: 12px;
+  }
+
+  .stats-kind {
+    padding: 10px;
   }
 }
 </style>
