@@ -22,7 +22,7 @@ function makeMatches(participantId: number, startId: number, finishedCount: numb
       setsAway: statusCd === 'FINISH' ? 8 : null,
       legsHome: statusCd === 'FINISH' ? 22 : null,
       legsAway: statusCd === 'FINISH' ? 18 : null,
-      round: { name: `Spieltag ${index + 1}` },
+      round: { id: 880000 + index, name: `Spieltag ${index + 1}` },
     }
   })
 }
@@ -47,6 +47,7 @@ describe('normalizeSeasonTeamMatches', () => {
     expect(matches.filter(({ participantGuest }) => participantGuest.id === 527581)).toHaveLength(7)
     expect(matches[0]).toMatchObject({
       matchId: 4652700,
+      groupId: 880000,
       roundName: 'Spieltag 1',
       statusCd: 'FINISH',
       setsHome: 10,
@@ -65,6 +66,7 @@ describe('normalizeSeasonTeamMatches', () => {
     const openMatches = matches.filter(({ statusCd }) => statusCd === 'OPEN')
     expect(openMatches).toHaveLength(8)
     expect(openMatches[0]).toMatchObject({
+      groupId: 880006,
       setsHome: null,
       setsAway: null,
       legsHome: null,

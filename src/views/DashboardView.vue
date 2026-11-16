@@ -4,13 +4,16 @@ import { storeToRefs } from 'pinia'
 import { getAvailableSeasons } from '../services/seasonConfig'
 import type { SeasonTeamMatch } from '../services/teamSchedule'
 import { usePlayerRosterStore } from '../stores/playerRoster'
+import { useMatchReportsStore } from '../stores/matchReports'
 import { useSeasonStore } from '../stores/season'
 import { useTeamStandingsStore } from '../stores/teamStandings'
 
 const rosterStore = usePlayerRosterStore()
+const matchReportsStore = useMatchReportsStore()
 const standingsStore = useTeamStandingsStore()
 const seasonStore = useSeasonStore()
 const { teamMatchesBySeason, loading, errors } = storeToRefs(rosterStore)
+const { roundDataBySeason } = storeToRefs(matchReportsStore)
 const { standingsBySeason, loadingBySeason: standingsLoading, errorsBySeason: standingsErrors } =
   storeToRefs(standingsStore)
 const { selectedSeason } = storeToRefs(seasonStore)
@@ -38,12 +41,38 @@ watch(
 
 const sortedMatchesBySeason = computed(() => {
   return Object.fromEntries(
-    visibleSeasons.value.map(({ key }) => [
-      key,
-      [...(teamMatchesBySeason.value[key] ?? [])].sort(compareByDateDescending),
-    ]),
+    visibleSeasons.value.map(({ key }) => {
+      const groupIdsByMatchId = new Map<number, number>()
+      for (const round of Object.values(roundDataBySeason.value[key] ?? {})) {
+        for (const match of round.matches ?? []) {
+          const matchId = positiveId(match.id ?? match.matchId)
+          const groupId = positiveId(match.round?.id)
+          if (matchId !== null && groupId !== null) groupIdsByMatchId.set(matchId, groupId)
+        }
+      }
+
+      const matches = (teamMatchesBySeason.value[key] ?? []).map((match) => ({
+        ...match,
+        groupId: groupIdsByMatchId.get(match.matchId) ?? match.groupId,
+      }))
+      return [key, matches.sort(compareByDateDescending)]
+    }),
   ) as Record<string, SeasonTeamMatch[]>
 })
+
+function positiveId(value: unknown): number | null {
+  const id = typeof value === 'number' ? value : Number(value)
+  return Number.isInteger(id) && id > 0 ? id : null
+}
+
+function officialScheduleUrl(
+  eventId: number | null,
+  phaseId: number | null,
+  groupId: number | null,
+): string | null {
+  if (eventId === null || phaseId === null || groupId === null) return null
+  return `https://portal.3k-darts.com/frontend/events/9/event/${eventId}/phase/${phaseId}/group/${groupId}`
+}
 
 function compareByDateDescending(left: SeasonTeamMatch, right: SeasonTeamMatch): number {
   const leftDate = parseDate(left.datePlanned)
@@ -154,6 +183,7 @@ function isTeamStanding(
                 <th scope="col">Heimmannschaft</th>
                 <th scope="col">Gastmannschaft</th>
                 <th scope="col">Ergebnis</th>
+                <th scope="col"><span class="visually-hidden">3K-Darts-Spieltag</span></th>
               </tr>
             </thead>
             <tbody>
@@ -182,6 +212,19 @@ function isTeamStanding(
                   <span v-else class="match-result">
                     {{ formatResult(match) }}
                   </span>
+                </td>
+                <td class="schedule-link-cell">
+                  <a
+                    v-if="officialScheduleUrl(season.eventId, season.phaseId, match.groupId)"
+                    class="schedule-link"
+                    :href="officialScheduleUrl(season.eventId, season.phaseId, match.groupId) ?? undefined"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    :aria-label="`Spieltag ${season.year}, ${season.half}. Halbjahr im 3K-Darts-Portal öffnen`"
+                    title="Spieltag im 3K-Darts-Portal öffnen"
+                  >
+                    <i class="pi pi-external-link" aria-hidden="true" />
+                  </a>
                 </td>
               </tr>
             </tbody>
@@ -380,6 +423,40 @@ tbody tr:last-child td {
 
 .match-open {
   color: #c8d5dc;
+}
+
+.schedule-link-cell {
+  width: 1%;
+  text-align: center;
+}
+
+.schedule-link {
+  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 6px;
+  color: #82919e;
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.schedule-link:hover,
+.schedule-link:focus-visible {
+  background: #17232c;
+  color: #54e0d2;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+  border: 0;
 }
 
 @media (max-width: 760px) {

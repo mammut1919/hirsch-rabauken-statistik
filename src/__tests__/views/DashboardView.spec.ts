@@ -5,6 +5,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import DashboardView from '../../views/DashboardView.vue'
 import { getAvailableSeasons } from '../../services/seasonConfig'
 import { usePlayerRosterStore } from '../../stores/playerRoster'
+import { useMatchReportsStore } from '../../stores/matchReports'
 import { useSeasonStore } from '../../stores/season'
 import { useTeamStandingsStore } from '../../stores/teamStandings'
 import type { SeasonTeamMatch } from '../../services/teamSchedule'
@@ -18,6 +19,7 @@ const match = (
   setsAway: number | null = null,
 ): SeasonTeamMatch => ({
   matchId,
+  groupId: null,
   datePlanned: '2026-05-01T18:00:00Z',
   participantHome: teamSide === 'home'
     ? { id: 527581, displayName: 'Hirsch-Rabauken' }
@@ -57,6 +59,7 @@ describe('Dashboard season selection', () => {
     setActivePinia(pinia)
     const seasonStore = useSeasonStore()
     const rosterStore = usePlayerRosterStore()
+    const matchReportsStore = useMatchReportsStore()
     const standingsStore = useTeamStandingsStore()
     const seasons = getAvailableSeasons()
     const h1 = seasons.find(({ key }) => key === '2026-1')!
@@ -68,6 +71,12 @@ describe('Dashboard season selection', () => {
       match(3, 'H1 Auswärts', 'guest', 1, 4),
     ]
     rosterStore.teamMatchesBySeason[h2.key] = [match(2, 'H2 Heim')]
+    matchReportsStore.roundDataBySeason[h1.key] = {
+      301: { matches: [{ id: 1, round: { id: 83001 } }] },
+    }
+    matchReportsStore.roundDataBySeason[h2.key] = {
+      401: { matches: [{ id: 2, round: { id: 82520 } }] },
+    }
     standingsStore.standingsBySeason[h1.key] = [
       standing('Team H1 via ID', 1, 527581),
       standing('Hirsch-Rabauken', 2, 700001),
@@ -98,6 +107,12 @@ describe('Dashboard season selection', () => {
     expect(h1Rows[0]?.find('.match-result > span:last-child').classes()).not.toContain('team-score')
     expect(h1Rows[1]?.find('.match-result').text()).toBe('1 : 4')
     expect(h1Rows[1]?.find('.team-score').text()).toBe('4')
+    expect(h1Rows[0]?.find('.schedule-link').attributes('href')).toBe(
+      'https://portal.3k-darts.com/frontend/events/9/event/39389/phase/3010/group/83001',
+    )
+    expect(h1Rows[0]?.find('.schedule-link').attributes('target')).toBe('_blank')
+    expect(h1Rows[0]?.find('.schedule-link').attributes('rel')).toBe('noopener noreferrer')
+    expect(h1Rows[1]?.find('.schedule-link').exists()).toBe(false)
     expect(wrapper.findAll('.schedule-panel td.team-name')).toHaveLength(2)
     expect(wrapper.find('.team-standing-row').text()).toContain('Team H1 via ID')
     expect(wrapper.findAll('.team-standing-row')).toHaveLength(1)
@@ -109,6 +124,7 @@ describe('Dashboard season selection', () => {
     expect(loadRosters).toHaveBeenLastCalledWith([h2, h1])
     expect(wrapper.findAll('.ranking-table')).toHaveLength(2)
     expect(wrapper.findAll('.team-standing-row')).toHaveLength(2)
+    expect(wrapper.findAll('.schedule-link')).toHaveLength(2)
     expect(loadStandings).toHaveBeenLastCalledWith([h2, h1])
 
     seasonStore.selectedSeason = h2.key
@@ -119,6 +135,9 @@ describe('Dashboard season selection', () => {
     expect(wrapper.findAll('.ranking-table')).toHaveLength(1)
     expect(wrapper.find('.ranking-table').text()).toContain('Gegner H2')
     expect(wrapper.find('.schedule-panel .match-open').text()).toBe('Offen')
+    expect(wrapper.find('.schedule-link').attributes('href')).toBe(
+      'https://portal.3k-darts.com/frontend/events/9/event/40293/phase/3989/group/82520',
+    )
     expect(loadStandings).toHaveBeenLastCalledWith([h2])
     expect(loadRosters).toHaveBeenCalledTimes(3)
   })

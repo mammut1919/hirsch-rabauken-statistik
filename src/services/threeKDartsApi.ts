@@ -42,10 +42,11 @@ export interface ThreeKDartsScheduleMatch {
   setsAway?: number | null
   legsHome?: number | null
   legsAway?: number | null
-  round?: { name?: string | null } | null
+  round?: { id?: number | string | null; name?: string | null } | null
 }
 
 export interface ThreeKDartsRound {
+  id?: number | string
   name?: string
   matches?: ThreeKDartsScheduleMatch[]
 }

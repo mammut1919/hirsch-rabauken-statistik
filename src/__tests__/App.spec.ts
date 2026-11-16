@@ -33,6 +33,7 @@ describe('App', () => {
     expect(wrapper.text()).toContain('Hirsch-Rabauken Statistik')
     expect(wrapper.text()).toContain('Dashboard')
     expect(wrapper.text()).toContain('Statistik')
+    expect(wrapper.text()).toContain('Über diese Anwendung')
     expect(wrapper.text()).not.toContain('Mannschaftsspiele')
     expect(wrapper.text()).not.toContain('Spieler')
     expect(wrapper.text()).not.toContain('Doppel')

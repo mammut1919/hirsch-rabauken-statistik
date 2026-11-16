@@ -17,8 +17,8 @@ function setupView(options: { roundFailed?: boolean; reportFailed?: boolean; loa
   seasonStore.selectedSeason = season.key
   rosterStore.rosters[season.key] = []
   rosterStore.teamMatchesBySeason[season.key] = [
-    { matchId: 101, datePlanned: null, participantHome: { id: 527581, displayName: 'Hirsch-Rabauken' }, participantGuest: { id: 1, displayName: 'Gegner A' }, statusCd: 'FINISH', setsHome: 2, setsAway: 1, legsHome: null, legsAway: null, roundName: null },
-    { matchId: 102, datePlanned: null, participantHome: { id: 527581, displayName: 'Hirsch-Rabauken' }, participantGuest: { id: 2, displayName: 'Gegner B' }, statusCd: 'OPEN', setsHome: null, setsAway: null, legsHome: null, legsAway: null, roundName: null },
+    { matchId: 101, groupId: null, datePlanned: null, participantHome: { id: 527581, displayName: 'Hirsch-Rabauken' }, participantGuest: { id: 1, displayName: 'Gegner A' }, statusCd: 'FINISH', setsHome: 2, setsAway: 1, legsHome: null, legsAway: null, roundName: null },
+    { matchId: 102, groupId: null, datePlanned: null, participantHome: { id: 527581, displayName: 'Hirsch-Rabauken' }, participantGuest: { id: 2, displayName: 'Gegner B' }, statusCd: 'OPEN', setsHome: null, setsAway: null, legsHome: null, legsAway: null, roundName: null },
   ]
   matchStore.matchIdsBySeason[season.key] = [101, 102]
   matchStore.reportsBySeason[season.key] = options.allLoaded ? { 101: [], 102: [] } : { 101: [] }

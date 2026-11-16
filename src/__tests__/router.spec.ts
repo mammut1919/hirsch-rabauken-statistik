@@ -5,6 +5,7 @@ describe('application routes', () => {
   it('keeps the dashboard as the root route and exposes statistics and diagnostics', () => {
     expect(router.resolve('/').name).toBe('dashboard')
     expect(router.resolve('/statistik').name).toBe('statistik')
+    expect(router.resolve('/ueber').name).toBe('ueber')
     expect(router.resolve('/matchreport-test').name).toBe('matchreport-test')
   })
 

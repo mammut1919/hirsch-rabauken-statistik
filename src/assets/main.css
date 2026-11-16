@@ -22,7 +22,9 @@ button, input, select { font: inherit; }
 .nav-link .pi { width: 18px; font-size: 16px; text-align: center; }
 .nav-link:hover { background: #17232c; color: #e9f4f4; }
 .nav-link.is-active { border-color: #1a5558; background: #123033; color: #54e0d2; }
-.sidebar-footer { margin-top: auto; padding: 16px 10px 2px; border-top: 1px solid #1c2833; color: #657583; font-size: 12px; letter-spacing: .02em; }
+.sidebar-footer { display: grid; gap: 12px; margin-top: auto; padding: 16px 10px 2px; border-top: 1px solid #1c2833; color: #657583; font-size: 12px; letter-spacing: .02em; }
+.about-nav-link { color: #82919e; font-size: 12px; letter-spacing: 0; line-height: 1.5; text-decoration: none; }
+.about-nav-link:hover, .about-nav-link:focus-visible, .about-nav-link.is-active { color: #54e0d2; }
 .main-area { width: calc(100% - var(--sidebar-width)); min-height: 100vh; margin-left: var(--sidebar-width); }
 .topbar { display: flex; min-height: 116px; align-items: center; justify-content: space-between; gap: 24px; padding: 24px clamp(24px, 4vw, 58px); border-bottom: 1px solid #1b2732; background: #0d141d; }
 .eyebrow { margin: 0 0 8px; color: #50cfc3; font-size: 10px; font-weight: 700; letter-spacing: .16em; }
@@ -50,6 +52,8 @@ button, input, select { font: inherit; }
   .mobile-navigation { position: fixed; inset: 0 auto 0 0; z-index: 6; display: flex; width: min(280px, 82vw); flex-direction: column; padding: 22px 16px; border-right: 1px solid #1c2833; background: #0e151e; box-shadow: 12px 0 32px #0006; }
   .mobile-brand-mark { display: block; width: 100%; max-width: 210px; height: auto; margin: 0 auto 28px; object-fit: contain; }
   .mobile-navigation .nav-link { min-height: 44px; }
+  .mobile-navigation-footer { margin-top: auto; padding: 14px 13px 4px; border-top: 1px solid #1c2833; }
+  .mobile-navigation-footer .about-nav-link { display: block; }
   .season-control { width: 100%; justify-content: space-between; }
   .season-control { min-width: 0; gap: 10px; }
   .season-control .p-select { flex: 1; min-width: 0; max-width: 230px; }

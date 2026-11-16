@@ -49,6 +49,7 @@ function setupSortingView() {
   rosterStore.teamMatchesBySeason[season.key] = [
     {
       matchId: 1,
+      groupId: null,
       datePlanned: null,
       participantHome: { id: 527581, displayName: 'Hirsch-Rabauken' },
       participantGuest: { id: 1, displayName: 'Gegner' },

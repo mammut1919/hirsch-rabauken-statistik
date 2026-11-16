@@ -10,6 +10,7 @@ export interface SeasonTeamParticipant {
 
 export interface SeasonTeamMatch {
   matchId: number
+  groupId: number | null
   datePlanned: string | null
   participantHome: SeasonTeamParticipant
   participantGuest: SeasonTeamParticipant
@@ -62,6 +63,7 @@ export function normalizeSeasonTeamMatches(
 
     return [{
       matchId,
+      groupId: positiveId(match.round?.id),
       datePlanned: plannedDate(match.datePlanned),
       participantHome: normalizeParticipant(match.participantHome),
       participantGuest: normalizeParticipant(match.participantGuest),

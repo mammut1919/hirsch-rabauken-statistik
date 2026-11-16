@@ -22,7 +22,12 @@ const mobileMenuOpen = ref(false)
           <i class="pi pi-chart-line" aria-hidden="true" /><span>Statistik</span>
         </RouterLink>
       </nav>
-      <div class="sidebar-footer">Hirsch-Rabauken</div>
+      <div class="sidebar-footer">
+        <RouterLink class="about-nav-link" to="/ueber" active-class="is-active">
+          Über diese Anwendung
+        </RouterLink>
+        <span>Hirsch-Rabauken</span>
+      </div>
     </aside>
 
     <template v-if="mobileMenuOpen">
@@ -42,6 +47,11 @@ const mobileMenuOpen = ref(false)
             <i class="pi pi-chart-line" aria-hidden="true" /><span>Statistik</span>
           </RouterLink>
         </nav>
+        <div class="mobile-navigation-footer">
+          <RouterLink class="about-nav-link" to="/ueber" active-class="is-active" @click="mobileMenuOpen = false">
+            Über diese Anwendung
+          </RouterLink>
+        </div>
       </aside>
     </template>
 
