@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { getAvailableSeasons, getCurrentSeasonKey } from '../services/seasonConfig'
 import {
@@ -27,9 +27,29 @@ const comparisonSeasons = getAvailableSeasons().filter(
 )
 const currentSeasonKey = getCurrentSeasonKey()
 const visibleSeasonKeys = ref(comparisonSeasons.map(({ key }) => key))
+const chartContainer = ref<HTMLDivElement | null>(null)
+const chartWidth = ref(760)
+let chartResizeObserver: ResizeObserver | null = null
+
+function updateChartWidth(): void {
+  const width = chartContainer.value?.getBoundingClientRect().width
+  if (width && width > 0) chartWidth.value = width
+}
 
 onMounted(() => {
   void matchReportsStore.loadReports(comparisonSeasons)
+  updateChartWidth()
+  if (chartContainer.value && typeof ResizeObserver !== 'undefined') {
+    chartResizeObserver = new ResizeObserver(updateChartWidth)
+    chartResizeObserver.observe(chartContainer.value)
+  } else {
+    window.addEventListener('resize', updateChartWidth)
+  }
+})
+
+onBeforeUnmount(() => {
+  chartResizeObserver?.disconnect()
+  window.removeEventListener('resize', updateChartWidth)
 })
 
 const seasonResults = computed(() =>
@@ -59,11 +79,11 @@ const chart = computed(() => {
     ),
   )
   const maximum = Math.max(5, Math.ceil(maxPoints / 5) * 5)
-  const height = 360
-  const width = 760
+  const width = Math.max(240, Math.round(chartWidth.value))
+  const height = width < 360 ? 260 : width < 600 ? 310 : 360
   const matchdays = Math.max(14, ...seasonResults.value.map(({ matchdayCount }) => matchdayCount))
-  const left = 48
-  const right = 20
+  const left = width < 360 ? 37 : width < 600 ? 42 : 48
+  const right = width < 360 ? 20 : 24
   const top = 24
   const bottom = 62
   const plotWidth = width - left - right
@@ -169,7 +189,6 @@ function progressLabel(seasonKey: string): string {
         <input v-model="visibleSeasonKeys" type="checkbox" :value="season.seasonKey" />
         <span class="season-color" :style="{ backgroundColor: seasonColor(season.seasonKey) }" />
         <span>{{ season.label }}</span>
-        <strong v-if="isCurrentSeason(season.seasonKey)" class="current-tag">Aktuell</strong>
         <span class="season-total">
           {{ season.latestPoints === null ? 'Stand unvollständig' : `${season.latestPoints} Punkte` }}
           <template v-if="season.latestPoints !== null && season.latestMatchday">
@@ -179,10 +198,13 @@ function progressLabel(seasonKey: string): string {
       </label>
     </div>
 
-    <div v-if="visibleResults.length" class="chart-scroll">
+    <div v-if="visibleResults.length" ref="chartContainer" class="chart-canvas">
       <svg
         class="points-chart"
+        :width="chart.width"
+        :height="chart.height"
         :viewBox="`0 0 ${chart.width} ${chart.height}`"
+        preserveAspectRatio="xMidYMid meet"
         role="img"
         aria-labelledby="chart-title chart-description"
       >
@@ -225,7 +247,7 @@ function progressLabel(seasonKey: string): string {
         <text class="axis-title" :x="chart.left + chart.plotWidth / 2" :y="chart.height - 10" text-anchor="middle">
           Spieltag
         </text>
-        <text class="axis-title" transform="translate(13 174) rotate(-90)" text-anchor="middle">
+        <text class="axis-title" :transform="`translate(13 ${chart.height / 2}) rotate(-90)`" text-anchor="middle">
           Punkte
         </text>
 
@@ -349,28 +371,21 @@ function progressLabel(seasonKey: string): string {
   border-radius: 50%;
 }
 
-.current-tag {
-  padding: 2px 6px;
-  border-radius: 5px;
-  background: #123033;
-  color: #54e0d2;
-  font-size: 10px;
-  font-weight: 600;
-}
-
 .season-total {
   color: #95a3af;
   font-variant-numeric: tabular-nums;
 }
 
-.chart-scroll {
-  overflow-x: auto;
+.chart-canvas {
+  width: 100%;
+  min-width: 0;
 }
 
 .points-chart {
   display: block;
   width: 100%;
-  min-width: 640px;
+  max-width: 100%;
+  height: auto;
   overflow: visible;
 }
 
