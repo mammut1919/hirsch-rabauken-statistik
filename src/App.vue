@@ -16,10 +16,13 @@ const mobileMenuOpen = ref(false)
       <img class="brand-mark" :src="logo" alt="" aria-hidden="true" />
       <nav class="nav-list">
         <RouterLink class="nav-link" to="/" exact-active-class="is-active">
-          <i class="pi pi-chart-bar" aria-hidden="true" /><span>Dashboard</span>
+          <i class="pi pi-home" aria-hidden="true" /><span>Dashboard</span>
         </RouterLink>
         <RouterLink class="nav-link" to="/statistik" active-class="is-active">
-          <i class="pi pi-chart-line" aria-hidden="true" /><span>Statistik</span>
+          <i class="pi pi-users" aria-hidden="true" /><span>Statistik</span>
+        </RouterLink>
+        <RouterLink class="nav-link" to="/saisonvergleich" active-class="is-active">
+          <i class="pi pi-chart-line" aria-hidden="true" /><span>Saisonvergleich</span>
         </RouterLink>
       </nav>
       <div class="sidebar-footer">
@@ -45,6 +48,9 @@ const mobileMenuOpen = ref(false)
           </RouterLink>
           <RouterLink class="nav-link" to="/statistik" active-class="is-active" @click="mobileMenuOpen = false">
             <i class="pi pi-chart-line" aria-hidden="true" /><span>Statistik</span>
+          </RouterLink>
+          <RouterLink class="nav-link" to="/saisonvergleich" active-class="is-active" @click="mobileMenuOpen = false">
+            <i class="pi pi-chart-bar" aria-hidden="true" /><span>Saisonvergleich</span>
           </RouterLink>
         </nav>
         <div class="mobile-navigation-footer">
